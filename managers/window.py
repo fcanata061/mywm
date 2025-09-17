@@ -14,6 +14,7 @@ class Window:
         self.win.display.flush()
 
     def update_borders(self):
+        # Simula bordas duplas com border externo maior
         if self.focused:
             self.win.change_attributes(border_pixel=self.border_color_outer)
         else:
@@ -23,3 +24,24 @@ class Window:
     def set_focus(self, focus=True):
         self.focused = focus
         self.update_borders()
+
+    def map(self):
+        self.win.map()
+        self.win.display.flush()
+
+    def is_floating(self):
+        return self.floating
+
+    def configure(self, x=None, y=None, width=None, height=None):
+        kwargs = {}
+        if x is not None: kwargs['x'] = x
+        if y is not None: kwargs['y'] = y
+        if width is not None: kwargs['width'] = width
+        if height is not None: kwargs['height'] = height
+        self.win.configure(**kwargs)
+        self.win.display.flush()
+
+    def move(self, dx=0, dy=0):
+        geom = self.win.get_geometry()
+        self.configure(x=geom.x + dx, y=geom.y + dy,
+                       width=geom.width, height=geom.height)
