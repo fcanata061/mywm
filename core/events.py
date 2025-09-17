@@ -1,5 +1,5 @@
 from Xlib import X, display
-from managers import window, workspace
+from managers import window
 
 dpy = display.Display()
 root = dpy.screen().root
