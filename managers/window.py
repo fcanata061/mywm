@@ -1,4 +1,7 @@
 from Xlib import X
+from utils.config import get_config
+
+cfg = get_config()
 
 class Window:
     def __init__(self, xwin):
@@ -7,17 +10,16 @@ class Window:
         self.focused = False
         self.border_width_outer = 4
         self.border_width_inner = 2
-        self.border_color_outer = 0xff0000
-        self.border_color_inner = 0x00ff00
         self.win.map()
         self.update_borders()
         self.win.display.flush()
 
     def update_borders(self):
         if self.focused:
-            self.win.change_attributes(border_pixel=self.border_color_outer)
+            color = int(cfg.get_color("border_outer_focus")[1:], 16)
         else:
-            self.win.change_attributes(border_pixel=0x000000)
+            color = int(cfg.get_color("border_outer_normal")[1:], 16)
+        self.win.change_attributes(border_pixel=color)
         self.win.display.flush()
 
     def set_focus(self, focus=True):
