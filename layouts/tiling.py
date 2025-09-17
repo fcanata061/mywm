@@ -1,4 +1,13 @@
 class TilingLayout:
-    def apply(self, windows, screen_geom):
-        # distribuir janelas em master+stack
-        pass
+    def apply(self, windows):
+        # Protótipo mínimo: coloca todas as janelas em uma coluna
+        if not windows:
+            return
+        total = len(windows)
+        screen_width = 800
+        screen_height = 600
+        height_per = screen_height // total
+        y = 0
+        for w in windows:
+            w.configure(x=0, y=y, width=screen_width, height=height_per)
+            y += height_per
