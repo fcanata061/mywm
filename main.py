@@ -1,4 +1,7 @@
-from Xlib import X, display
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from Xlib import X, Xatom, display
 from core.events import setup_wm, next_event, handle_event
 from core.keybindings import handle_key
 from managers.window import Window
@@ -6,6 +9,26 @@ from utils.config import load_config, reload_config, get_autostart_apps
 from utils import lemonbar
 import subprocess
 import threading
+
+# =======================
+# Display e root
+# =======================
+dpy = display.Display()
+root = dpy.screen().root
+
+# =======================
+# Nome do WM
+# =======================
+wm_name_atom = dpy.intern_atom("_NET_WM_NAME")
+utf8_atom = dpy.intern_atom("UTF8_STRING")
+root.change_property(wm_name_atom, utf8_atom, 8, "MyWM".encode())
+
+# _NET_SUPPORTING_WM_CHECK
+wm_check = root.create_window(0, 0, 1, 1, 0, X.CopyFromParent)
+net_wm_check = dpy.intern_atom("_NET_SUPPORTING_WM_CHECK")
+wm_check.change_property(net_wm_check, Xatom.WINDOW, 32, [wm_check.id])
+wm_check.change_property(wm_name_atom, utf8_atom, 8, "MyWM".encode())
+dpy.flush()
 
 # =======================
 # Inicialização
