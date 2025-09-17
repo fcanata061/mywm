@@ -1,6 +1,5 @@
 class TilingLayout:
     def apply(self, windows):
-        # Protótipo mínimo: coloca todas as janelas em uma coluna
         if not windows:
             return
         total = len(windows)
