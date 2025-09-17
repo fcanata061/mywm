@@ -1,8 +1,7 @@
 import subprocess
 
-def open(cfg):
-    # protótipo simples: abre prompt no terminal
-    # depois pode ser substituído por overlay gráfico
+def open(cfg=None):
+    # protótipo mínimo de dmenu interno
     cmd = input("Run: ")
     if cmd:
         subprocess.Popen(cmd, shell=True)
