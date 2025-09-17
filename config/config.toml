@@ -1,5 +1,5 @@
 # =========================
-# Configuração do MyWM
+# Configuração do MyWM Final
 # =========================
 
 [general]
@@ -28,6 +28,8 @@ launch_launcher = "Super+p"
 quit_wm = "Super+Shift+q"
 # Reiniciar WM
 restart_wm = "Super+Shift+r"
+# Reload config (hot-reload)
+reload_config = "Super+Shift+c"
 # Alt+Tab circular
 next_window = "Alt+Tab"
 prev_window = "Alt+Shift+Tab"
