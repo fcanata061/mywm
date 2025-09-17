@@ -1,19 +1,24 @@
 # managers/workspaces.py
-# Autostart de aplicativos e gerenciamento de áreas de trabalho
+# Workspaces avançados MyWM 1.2+
+# Multi-monitor, layouts independentes, mover janelas, autostart
 
 from Xlib import X
 from core import layouts, ewmh
 import subprocess
+import time
 
 class Workspace:
     def __init__(self, name, layout=None):
         self.name = name
-        self.windows = []  # janelas deste workspace
+        self.windows = []
         self.layout_manager = layouts.LayoutManager()
         if layout is not None:
             self.layout_manager.set_layout(layout)
         self.focus = None
 
+    # =======================
+    # JANELAS
+    # =======================
     def add_window(self, win):
         if win not in self.windows:
             self.windows.append(win)
@@ -37,8 +42,9 @@ class Workspace:
         if win:
             win.set_input_focus(X.RevertToParent, X.CurrentTime)
 
-    def apply_layout(self):
-        self.layout_manager.apply(self.windows, self.get_screen_geom())
+    def apply_layout(self, screen_geom=None):
+        geom = screen_geom or self.get_screen_geom()
+        self.layout_manager.apply(self.windows, geom)
 
     def next_layout(self):
         self.layout_manager.next_layout()
@@ -49,20 +55,14 @@ class Workspace:
         self.apply_layout()
 
     def get_screen_geom(self):
-        # Para integração multi-monitor, pode ser parametrizado
-        # Aqui usamos a tela principal
         if self.windows:
             return self.windows[0].get_geometry()
         else:
             # fallback
-            return type("Geom", (), {"x":0, "y":0, "width":800, "height":600})()
+            return type("Geom", (), {"x":0,"y":0,"width":800,"height":600})()
 
 class WorkspacesManager:
     def __init__(self, wm, names=None):
-        """
-        wm: referência ao WindowManager
-        names: lista de nomes de workspaces
-        """
         self.wm = wm
         self.workspaces = []
         self.current_index = 0
@@ -73,7 +73,7 @@ class WorkspacesManager:
             self.workspaces.append(Workspace(n))
 
     # =======================
-    # GERENCIAR WORKSPACES
+    # WORKSPACE ATUAL
     # =======================
     def current(self):
         return self.workspaces[self.current_index]
@@ -82,7 +82,6 @@ class WorkspacesManager:
         if index < 0 or index >= len(self.workspaces):
             return
         self.current_index = index
-        # Aplicar layout e atualizar foco
         ws = self.current()
         ws.apply_layout()
         if ws.focus:
@@ -104,6 +103,9 @@ class WorkspacesManager:
         if current_ws:
             current_ws.remove_window(win)
         self.workspaces[target_index].add_window(win)
+        # Atualiza monitor/layout do WM
+        self.workspaces[target_index].apply_layout()
+        self.wm.set_focus(win)
 
     def find_workspace_of(self, win):
         for ws in self.workspaces:
@@ -112,20 +114,21 @@ class WorkspacesManager:
         return None
 
     # =======================
-    # AUTOSTART DE APLICATIVOS
+    # AUTOSTART
     # =======================
     def set_autostart(self, apps):
-        """
-        apps: lista de comandos como strings
-        """
         self.autostart_apps = apps
 
-    def run_autostart(self):
+    def run_autostart(self, delay=0.1):
+        """
+        Executa apps em background com pequeno delay entre eles
+        """
         for cmd in self.autostart_apps:
             subprocess.Popen(cmd, shell=True)
+            time.sleep(delay)
 
     # =======================
-    # APLICAR LAYOUT ATUAL
+    # LAYOUT ATUAL
     # =======================
     def apply_current_layout(self):
         self.current().apply_layout()
