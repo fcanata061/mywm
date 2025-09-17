@@ -1,13 +1,45 @@
-import os, sys
-from core import state
-from utils import lemonbar
+import os
+import sys
+from subprocess import Popen
+from Xlib import display, X
 
-def restart_wm(wm_state):
-    print("Reiniciando WM...")
-    state.save_state(wm_state)
-    lemonbar.stop()
-    os.execv(sys.executable, [sys.executable] + sys.argv)
-
+# =======================
+# Quit WM
+# =======================
 def quit_wm():
-    lemonbar.stop()
+    """Encerra o Window Manager com segurança"""
+    try:
+        dpy = display.Display()
+        root = dpy.screen().root
+        # Remove eventos do root
+        root.change_attributes(event_mask=0)
+        dpy.flush()
+    except Exception:
+        pass
+    print("Window Manager encerrado.")
     sys.exit(0)
+
+# =======================
+# Restart WM
+# =======================
+def restart_wm(wm_state=None):
+    """
+    Reinicia o WM sem reiniciar o X.
+    Se wm_state estiver disponível, fecha todas as janelas gerenciadas.
+    """
+    try:
+        dpy = display.Display()
+        root = dpy.screen().root
+        root.change_attributes(event_mask=0)
+        dpy.flush()
+    except Exception:
+        pass
+
+    print("Reiniciando Window Manager...")
+
+    # Obter o caminho do script atual
+    python = sys.executable
+    script = sys.argv[0]
+
+    # Reinicia o processo atual
+    os.execv(python, [python] + sys.argv)
