@@ -10,5 +10,5 @@ class Monitor:
 def get_monitors():
     dpy = display.Display()
     screen = dpy.screen()
-    # Protótipo: assume apenas um monitor
+    # Protótipo mínimo: 1 monitor
     return [Monitor(0, 0, screen.width_in_pixels, screen.height_in_pixels)]
