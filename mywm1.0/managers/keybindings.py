@@ -39,19 +39,23 @@ class KeyBindings:
     # FUNÇÕES DE TECLA
     # =======================
     def cycle_windows(self):
-        """Simula Alt+Tab, circula pelas janelas do workspace"""
-        ws = getattr(self.wm, "workspaces_manager", None)
-        if ws:
-            windows = ws.current().windows
-        else:
-            windows = getattr(self.wm, "windows", [])
-        if not windows or len(windows) < 2:
-            return
-        # Move foco para próxima janela
-        idx = windows.index(self.wm.focus) if self.wm.focus in windows else 0
-        next_win = windows[(idx + 1) % len(windows)]
-        self.wm.set_focus(next_win)
+    """Circula pelas janelas do workspace atual e atualiza lemonbar"""
+    ws = getattr(self.wm, "workspaces_manager", None)
+    if ws:
+        windows = ws.current().windows
+    else:
+        windows = getattr(self.wm, "windows", [])
+    
+    if not windows or len(windows) < 2:
+        return
 
+    idx = windows.index(self.wm.focus) if self.wm.focus in windows else 0
+    next_win = windows[(idx + 1) % len(windows)]
+    self.wm.set_focus(next_win)
+
+    # Atualiza lemonbar
+    if hasattr(self.wm, "notifications"):
+        self.wm.notifications.window_changed()
     def next_layout(self):
         """Alterna para próximo layout"""
         if hasattr(self.wm, "layout_manager"):
