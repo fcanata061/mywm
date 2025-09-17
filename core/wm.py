@@ -4,7 +4,6 @@ from managers.workspace import Workspace
 def main():
     # Setup inicial
     events.setup_wm()
-
     # Dois workspaces de exemplo
     wm_state = {
         "workspaces": {
