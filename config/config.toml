@@ -1,19 +1,66 @@
+# =========================
+# Configuração do MyWM
+# =========================
+
+[general]
+# Layout default para novos workspaces
+default_layout = "tiling"
+# Monitor default (0 = primeiro monitor)
+default_monitor = 0
+
+[colors]
+# Bordas da janela
+border_outer_focus = "#FF0000"   # vermelho
+border_inner_focus = "#00FF00"   # verde
+border_outer_normal = "#000000"  # preto
+border_inner_normal = "#333333"  # cinza escuro
+
+[fonts]
+# Fonte para Lemonbar
+lemonbar_font = "Monospace-10"
+# Fonte para notificações
+notification_font = "Monospace-12"
+
 [keybindings]
-"Super+Shift+r" = "restart_wm"
-"Super+Shift+q" = "quit_wm"
-"Super+b"       = "toggle_lemonbar"
+# Launcher
+launch_launcher = "Super+p"
+# Fechar WM
+quit_wm = "Super+Shift+q"
+# Reiniciar WM
+restart_wm = "Super+Shift+r"
+# Alt+Tab circular
+next_window = "Alt+Tab"
+prev_window = "Alt+Shift+Tab"
+# Mover janelas
+move_up = "Ctrl+Up"
+move_down = "Ctrl+Down"
+move_left = "Ctrl+Left"
+move_right = "Ctrl+Right"
+# Snap nos cantos
+snap_top_left = "Super+Left"
+snap_top_right = "Super+Right"
+snap_bottom_left = "Super+Down"
+snap_bottom_right = "Super+Up"
+# Lemonbar toggle
+toggle_lemonbar = "Super+b"
 
-[launcher]
-key = "Super+p"
-font = "JetBrainsMono Nerd Font:size=12"
-fg = "#ffffff"
-bg = "#1e1e2e"
+[workspaces]
+# Cada workspace pode ter layout próprio
+1_layout = "tiling"
+2_layout = "floating"
+3_layout = "monocle"
+4_layout = "fullscreen"
 
-[bar]
-font = "JetBrainsMono Nerd Font:size=12"
-
-autostart = [
-  "nm-applet",
-  "picom --experimental-backends",
-  "nitrogen --restore"
+[autostart]
+# Lista de aplicativos para iniciar automaticamente
+apps = [
+    "xsetroot -cursor_name left_ptr",
+    "picom -b",
+    "nm-applet",
+    "volumeicon"
 ]
+
+[scratchpad]
+# Comando para abrir scratchpad (terminal flutuante rápido)
+command = "alacritty --class Scratchpad"
+shortcut = "Super+`"
