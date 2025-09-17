@@ -1,61 +1,44 @@
 import toml
-import subprocess
-from pathlib import Path
+import os
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.toml"
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../config/config.toml")
+data = {}
 
-class Config:
-    def __init__(self):
-        self.data = {}
-        self.load()
-
-    def load(self):
-        if CONFIG_PATH.exists():
-            self.data = toml.load(CONFIG_PATH)
-        else:
-            print("Arquivo config.toml não encontrado")
-            self.data = {}
-
-    # Keybindings
-    def get_key(self, action):
-        return self.data.get("keybindings", {}).get(action, "")
-
-    # Colors
-    def get_color(self, name):
-        return self.data.get("colors", {}).get(name, "#FFFFFF")
-
-    # Fonts
-    def get_font(self, name):
-        return self.data.get("fonts", {}).get(name, "Monospace-10")
-
-    # Workspace layouts
-    def get_workspace_layout(self, ws_id):
-        key = f"{ws_id}_layout"
-        return self.data.get("workspaces", {}).get(key, "tiling")
-
-    # Autostart
-    def autostart_apps(self):
-        apps = self.data.get("autostart", {}).get("apps", [])
-        for cmd in apps:
-            subprocess.Popen(cmd, shell=True)
-
-    # Scratchpad
-    def get_scratchpad_command(self):
-        return self.data.get("scratchpad", {}).get("command", "")
-
-    def get_scratchpad_shortcut(self):
-        return self.data.get("scratchpad", {}).get("shortcut", "")
-
-_global_config = None
-
-def get_config():
-    global _global_config
-    if _global_config is None:
-        _global_config = Config()
-    return _global_config
+def load_config():
+    """Carrega o config.toml"""
+    global data
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            data = toml.load(f)
+    except Exception as e:
+        print(f"Falha ao carregar config: {e}")
+        data = {}
 
 def reload_config():
-    global _global_config
-    if _global_config:
-        _global_config.load()
-        print("Configuração recarregada")
+    """Recarrega config e atualiza globalmente"""
+    load_config()
+    print("Configuração recarregada.")
+
+# =======================
+# Acesso rápido às propriedades
+# =======================
+def get_color(key):
+    return data.get("colors", {}).get(key, "#FFFFFF")
+
+def get_font(key):
+    return data.get("fonts", {}).get(key, "Monospace-10")
+
+def get_key(key):
+    return data.get("keybindings", {}).get(key, "")
+
+def get_scratchpad_command():
+    return data.get("scratchpad", {}).get("command", "")
+
+def get_scratchpad_shortcut():
+    return data.get("scratchpad", {}).get("shortcut", "")
+
+def get_autostart_apps():
+    return data.get("autostart", {}).get("apps", [])
+
+def get_layout(workspace_id):
+    return data.get("workspaces", {}).get(f"{workspace_id}_layout", "tiling")
