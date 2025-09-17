@@ -1,0 +1,98 @@
+=============================
+MyWM 1.0 - Tutorial Completo
+=============================
+
+1. Estrutura de Diretórios
+--------------------------
+~/.config/mwm/               # Configuração do usuário
+├── config.py                 # Configuração principal do MyWM
+├── autostart.sh              # Scripts de aplicativos que iniciam automaticamente
+├── themes/                   # Temas, cores e fontes
+└── managers/                 # Módulos do WM
+    ├── ewmh.py
+    ├── layouts.py
+    ├── scratchpad.py
+    ├── multimonitor.py
+    ├── decorations.py
+    ├── workspaces.py
+    ├── keybindings.py
+    └── notifications.py
+└── core/                     # Código central do WM
+    └── main.py               # Inicialização do WM
+
+2. Configuração (config.py)
+----------------------------
+- Terminal padrão
+- Bordas internas/externas, cores e gaps
+- Workspaces com layouts iniciais
+- Atalhos de teclado configuráveis
+- Lista de aplicativos de autostart
+- Comando lemonbar e integração com notificações
+- Ajustes adicionais: multi-monitor, scratchpad, floating padrão
+
+3. Inicialização do WM
+----------------------
+1. Garanta que o arquivo main.py tenha o shebang:
+   #!/usr/bin/env python3
+2. Torne-o executável:
+   chmod +x main.py
+3. Link para iniciar pelo nome 'mwm':
+   sudo ln -s /caminho/para/main.py /usr/local/bin/mwm
+4. Rodar o WM:
+   mwm
+
+4. Funcionalidades Suportadas
+-----------------------------
+- Floating inteligente
+- Multi-monitor
+- Workspaces independentes (9 por default)
+- Scratchpad avançado (múltiplos scratchpads suportados)
+- Layouts completos:
+  - Monocle
+  - Tile
+  - Floating
+  - Fullscreen toggle
+- Bordas internas/externas e gaps configuráveis
+- Lemonbar integrado:
+  - Exibe workspace atual, layout, janelas abertas e foco
+- Notificações via notify-send
+- Atalhos de teclado configuráveis:
+  - Alt+Tab: alterna janelas
+  - Mod+Enter: abrir terminal
+  - Mod+Shift+Q: fechar janela
+  - Mod+Space / Mod+Shift+Space: alterna layouts
+  - Mod+Shift+S: toggle scratchpad
+  - Mod+R: recarrega configuração
+  - Mod+F: toggle fullscreen
+- Autostart de aplicativos
+- Configuração dinâmica via config.py sem reiniciar ou recompilar
+
+5. Integração
+-------------
+- Configuração importada automaticamente do diretório:
+  ~/.config/mwm/config.py
+- Todos os módulos recebem a configuração:
+  - Keybindings
+  - Layouts
+  - Workspaces
+  - Scratchpads
+  - Decorations
+  - Notifications
+- Lemonbar e notificações atualizam automaticamente quando:
+  - Foco muda
+  - Janela adicionada/removida
+  - Layout alterado
+
+6. Observações
+---------------
+- Para adicionar novos scratchpads:
+  - Configure em config.py
+  - Adicione keybindings para alternar cada um
+- Para adicionar novos layouts:
+  - Edite layouts.py e configure layout inicial por workspace
+- Multi-monitor é suportado automaticamente, mas verifique as configurações no multimonitor.py
+- Recarregar configuração não exige reiniciar o WM
+
+-----------------------------
+Fim do Tutorial - MyWM 1.0
+-----------------------------
