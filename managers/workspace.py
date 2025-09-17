@@ -1,6 +1,8 @@
 from managers.window import Window
 from layouts.floating import FloatingLayout
 from layouts.tiling import TilingLayout
+from layouts.monocle import MonocleLayout
+from layouts.fullscreen import FullscreenLayout
 
 class Workspace:
     def __init__(self, wid, layout="tiling"):
@@ -10,7 +12,9 @@ class Workspace:
         self.layout_name = layout
         self.layouts = {
             "floating": FloatingLayout(),
-            "tiling": TilingLayout()
+            "tiling": TilingLayout(),
+            "monocle": MonocleLayout(),
+            "fullscreen": FullscreenLayout()
         }
 
     def add_window(self, win):
@@ -21,7 +25,6 @@ class Workspace:
 
     def remove_window(self, win):
         if win in self.windows:
-            idx = self.windows.index(win)
             self.windows.remove(win)
             if self.focus_index >= len(self.windows):
                 self.focus_index = len(self.windows) - 1
