@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 # main.py
 # Inicialização completa do MyWM 1.0+
+import os
+import sys
+
+config_path = os.path.expanduser("~/.config/mwm/config.py")
+if os.path.exists(config_path):
+    sys.path.insert(0, os.path.dirname(config_path))
+    from config import config
+else:
+    config = {}  # Configuração default
+
 from Xlib import X, display
 from managers import (
     ewmh,
