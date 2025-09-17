@@ -1,21 +1,14 @@
-from core import state, events, keybindings
-from utils import config, lemonbar, autostart
+from core import events
 
 def main():
-    cfg = config.load_config()
-    wm_state = state.load_state() or {"workspaces": {}, "layout": "tiling"}
+    wm_state = {}  # protótipo mínimo
+    events.setup_wm()
 
-    # iniciar serviços auxiliares
-    lemonbar.start(cfg)
-    autostart.run(cfg)
+    print("WM iniciado. Pressione Super+p para abrir launcher, Super+Shift+q para sair.")
 
-    # loop principal
     while True:
-        event = events.next_event()
-        if event["type"] == "key":
-            keybindings.handle_key(event["key"], wm_state, cfg)
-        else:
-            events.handle_event(event, wm_state)
+        ev = events.next_event()
+        events.handle_event(ev, wm_state)
 
 if __name__ == "__main__":
     main()
