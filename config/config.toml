@@ -1,0 +1,19 @@
+[keybindings]
+"Super+Shift+r" = "restart_wm"
+"Super+Shift+q" = "quit_wm"
+"Super+b"       = "toggle_lemonbar"
+
+[launcher]
+key = "Super+p"
+font = "JetBrainsMono Nerd Font:size=12"
+fg = "#ffffff"
+bg = "#1e1e2e"
+
+[bar]
+font = "JetBrainsMono Nerd Font:size=12"
+
+autostart = [
+  "nm-applet",
+  "picom --experimental-backends",
+  "nitrogen --restore"
+]
