@@ -1,0 +1,118 @@
+# ================================
+# CONFIGURAÇÃO DO MYWM
+# ================================
+
+[general]
+modkey = "Super"        # Tecla modificadora principal
+terminal = "alacritty"  # Terminal padrão
+launcher = "dmenu_run"  # Menu de execução
+border_width = 3
+inner_border = 1
+focus_follow_mouse = true
+
+[colors]
+border_focus = "#88c0d0"
+border_normal = "#4c566a"
+border_inner = "#2e3440"
+background = "#2e3440"
+foreground = "#d8dee9"
+
+[fonts]
+default = "monospace:size=10"
+bar = "monospace:size=12"
+
+# ================================
+# LEMONBAR
+# ================================
+[bar]
+position = "top"          # top | bottom
+height = 24
+background = "#2e3440"
+foreground = "#eceff4"
+
+# ================================
+# AUTOSTART
+# ================================
+[autostart]
+apps = [
+  "picom --experimental-backends",
+  "nm-applet",
+  "volumeicon",
+  "feh --bg-fill ~/wallpapers/mywall.png"
+]
+
+# ================================
+# WORKSPACES
+# ================================
+[workspaces]
+names = ["1:web", "2:code", "3:term", "4:chat", "5:media", "6:dev", "7:vm", "8:misc", "9:scratch"]
+default_layouts = ["tiling", "tiling", "tiling", "floating", "monocle", "tiling", "fullscreen", "floating", "scratchpad"]
+
+# Forçar apps em workspaces específicos
+[workspaces.rules]
+"firefox" = 1
+"code-oss" = 2
+"alacritty" = 3
+"discord" = 4
+"vlc" = 5
+
+# ================================
+# TECLAS
+# ================================
+[keys.launcher]
+mod = "Super"
+key = "p"
+command = "launcher"
+
+[keys.terminal]
+mod = "Super"
+key = "Return"
+command = "terminal"
+
+[keys.kill]
+mod = "Super+Shift"
+key = "c"
+command = "close"
+
+[keys.reload]
+mod = "Super+Shift"
+key = "r"
+command = "reload"
+
+[keys.quit]
+mod = "Super+Shift"
+key = "q"
+command = "quit"
+
+[keys.toggle_bar]
+mod = "Super"
+key = "b"
+command = "toggle_bar"
+
+[keys.scratchpad]
+mod = "Super"
+key = "grave"
+command = "scratchpad"
+
+[keys.next_window]
+mod = "Alt"
+key = "Tab"
+command = "focus_next"
+
+[keys.prev_window]
+mod = "Alt+Shift"
+key = "Tab"
+command = "focus_prev"
+
+# ================================
+# MULTI-MONITOR
+# ================================
+[keys.monitor_next]
+mod = "Super+Ctrl"
+key = "Right"
+command = "move_to_next_monitor"
+
+[keys.monitor_prev]
+mod = "Super+Ctrl"
+key = "Left"
+command = "move_to_prev_monitor"
