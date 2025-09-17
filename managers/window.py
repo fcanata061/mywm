@@ -7,14 +7,13 @@ class Window:
         self.focused = False
         self.border_width_outer = 4
         self.border_width_inner = 2
-        self.border_color_outer = 0xff0000  # vermelho
-        self.border_color_inner = 0x00ff00  # verde
+        self.border_color_outer = 0xff0000
+        self.border_color_inner = 0x00ff00
         self.win.map()
         self.update_borders()
         self.win.display.flush()
 
     def update_borders(self):
-        # Simula bordas duplas com border externo maior
         if self.focused:
             self.win.change_attributes(border_pixel=self.border_color_outer)
         else:
