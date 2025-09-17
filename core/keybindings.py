@@ -1,13 +1,8 @@
-from core import commands
+from utils import launcher
 
 def handle_key(key, wm_state, cfg):
-    if key == "Super+Shift+r":
-        commands.restart_wm(wm_state)
-    elif key == "Super+Shift+q":
-        commands.quit_wm()
-    elif key == "Super+b":
-        commands.toggle_lemonbar(cfg)
-    elif key == cfg["launcher"]["key"]:
-        # ativa launcher interno
-        from utils import launcher
+    if key == "Super+p":
         launcher.open(cfg)
+    elif key == "Super+Shift+q":
+        print("Saindo do WM")
+        import sys; sys.exit(0)
