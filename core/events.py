@@ -1,19 +1,14 @@
 from Xlib import X, display
-from managers import window
+from managers import window, workspace
 
 dpy = display.Display()
 root = dpy.screen().root
 
 def setup_wm():
     root.change_attributes(event_mask=X.SubstructureRedirectMask |
-                                       X.SubstructureNotifyMask |
-                                       X.KeyPressMask)
+                           X.SubstructureNotifyMask |
+                           X.KeyPressMask)
     dpy.flush()
-
-def grab_keys(keys):
-    for key in keys:
-        keycode = dpy.keysym_to_keycode(key)
-        root.grab_key(keycode, X.AnyModifier, True, X.GrabModeAsync, X.GrabModeAsync)
 
 def next_event():
     return dpy.next_event()
@@ -26,4 +21,5 @@ def handle_event(ev, wm_state):
         keybindings.handle_key(key, wm_state, None)
     elif ev.type == X.MapRequest:
         w = window.Window(ev.window)
-        w.map()
+        ws = wm_state["workspaces"][wm_state["current"]]
+        ws.add_window(w)
