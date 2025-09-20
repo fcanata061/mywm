@@ -1,17 +1,12 @@
 # mywm1.0/core/ewmh.py
 """
-EWMHManager (estendido)
-Helpers para:
- - enviar/interpretar ClientMessage relacionados a _NET_WM_STATE
- - set/get fullscreen, maximized
- - set_active_window, update_client_list
- - set_number_of_desktops, set_desktop_names, set_current_desktop
- - utilitários para checar estado de janela
+EWMHManager (Extended)
+Implementa suporte a especificação EWMH 1.5 para mwm
 """
 
 import logging
 from typing import List, Optional, Tuple
-from Xlib import X, display, Xatom, protocol
+from Xlib import X, Xatom, display, protocol
 
 logger = logging.getLogger("mywm.ewmh")
 logger.addHandler(logging.NullHandler())
@@ -19,22 +14,13 @@ logger.addHandler(logging.NullHandler())
 
 class EWMHManager:
     def __init__(self, wm, wm_name: str = "MyWM", workspaces: Optional[List[str]] = None):
-        """
-        wm: contexto principal (deve expor .dpy e .root)
-        workspaces: lista opcional de nomes de workspaces para inicializar propriedades
-        """
         self.wm = wm
         self.dpy = getattr(wm, "dpy", display.Display())
         self.root = getattr(wm, "root", self.dpy.screen().root)
         self.wm_name = wm_name
         self.atoms = {}
         self._init_atoms()
-        if workspaces:
-            try:
-                self.set_desktop_names(workspaces)
-                self.set_number_of_desktops(len(workspaces))
-            except Exception:
-                logger.debug("EWMH init: não conseguiu setar nomes/número de desktops")
+        self._init_root_properties(workspaces)
 
     # --------------------------
     # Atoms
@@ -43,185 +29,183 @@ class EWMHManager:
         return self.dpy.intern_atom(name, only_if_exists=False)
 
     def _init_atoms(self):
-        needed = [
-            "_NET_WM_STATE", "_NET_WM_STATE_FULLSCREEN",
-            "_NET_WM_STATE_MAXIMIZED_VERT", "_NET_WM_STATE_MAXIMIZED_HORZ",
-            "_NET_ACTIVE_WINDOW", "_NET_CLIENT_LIST", "_NET_NUMBER_OF_DESKTOPS",
-            "_NET_DESKTOP_NAMES", "_NET_CURRENT_DESKTOP", "_NET_WM_STATE_HIDDEN",
-            "_NET_WM_DESKTOP", "UTF8_STRING", "WM_PROTOCOLS", "WM_DELETE_WINDOW",
+        atom_names = [
+            # core
+            "_NET_SUPPORTED", "_NET_SUPPORTING_WM_CHECK", "_NET_WM_NAME",
+            "_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING", "_NET_ACTIVE_WINDOW",
+            "_NET_NUMBER_OF_DESKTOPS", "_NET_DESKTOP_NAMES",
+            "_NET_CURRENT_DESKTOP", "_NET_DESKTOP_VIEWPORT", "_NET_DESKTOP_GEOMETRY",
+            "_NET_WM_DESKTOP", "_NET_CLOSE_WINDOW", "_NET_WM_MOVERESIZE",
+            "_NET_WM_STATE", "_NET_WM_ALLOWED_ACTIONS", "_NET_WM_PING",
+
+            # states
+            "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_MAXIMIZED_VERT",
+            "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_STATE_HIDDEN",
+            "_NET_WM_STATE_SHADED", "_NET_WM_STATE_SKIP_TASKBAR",
+            "_NET_WM_STATE_SKIP_PAGER",
+
+            # types
             "_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK",
+            "_NET_WM_WINDOW_TYPE_DIALOG", "_NET_WM_WINDOW_TYPE_NORMAL",
+            "_NET_WM_WINDOW_TYPE_SPLASH",
+
+            # misc
+            "UTF8_STRING", "WM_PROTOCOLS", "WM_DELETE_WINDOW"
         ]
-        for n in needed:
+        for n in atom_names:
             try:
                 self.atoms[n] = self._atom(n)
             except Exception:
-                logger.debug("Não conseguiu intern atom %s", n)
+                logger.debug("Não conseguiu criar atom %s", n)
 
     # --------------------------
-    # Low-level ClientMessage sender
+    # Init root properties
     # --------------------------
-    def send_client_message(self, win, client_type_atom, data: Tuple[int, int, int, int, int], fmt=32):
-        """
-        Envia ClientMessage para a root window.
-        data deve ser tupla de 5 inteiros (EWMH spec).
-        """
+    def _init_root_properties(self, workspaces: Optional[List[str]]):
         try:
-            ev = protocol.event.ClientMessage(
-                window=win,
-                client_type=client_type_atom,
-                data=(fmt, data)
-            )
-            self.root.send_event(ev, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
+            # Supported atoms
+            supported = list(self.atoms.values())
+            self.root.change_property(self.atoms["_NET_SUPPORTED"], Xatom.ATOM, 32, supported)
+
+            # WM check window
+            wm_win = self.root.create_window(0, 0, 1, 1, 0, X.CopyFromParent)
+            wm_win.change_property(self.atoms["_NET_SUPPORTING_WM_CHECK"], Xatom.WINDOW, 32, [wm_win.id])
+            wm_win.change_property(self.atoms["_NET_WM_NAME"],
+                                   self.atoms["UTF8_STRING"], 8, self.wm_name.encode("utf-8"))
+            self.root.change_property(self.atoms["_NET_SUPPORTING_WM_CHECK"], Xatom.WINDOW, 32, [wm_win.id])
+            self.root.change_property(self.atoms["_NET_WM_NAME"],
+                                      self.atoms["UTF8_STRING"], 8, self.wm_name.encode("utf-8"))
+
+            # desktops
+            if workspaces:
+                self.set_number_of_desktops(len(workspaces))
+                self.set_desktop_names(workspaces)
+                self.set_current_desktop(0)
+                # viewport = (0,0) for all
+                self.root.change_property(self.atoms["_NET_DESKTOP_VIEWPORT"], Xatom.CARDINAL, 32,
+                                          [0, 0] * len(workspaces))
+                # geometry = screen size
+                scr = self.dpy.screen()
+                self.root.change_property(self.atoms["_NET_DESKTOP_GEOMETRY"], Xatom.CARDINAL, 32,
+                                          [scr.width_in_pixels, scr.height_in_pixels])
+
             self.dpy.flush()
         except Exception:
-            logger.exception("send_client_message falhou")
+            logger.exception("Falha inicializando propriedades EWMH")
 
     # --------------------------
-    # _NET_WM_STATE helpers (fullscreen / maximized)
+    # Client list
     # --------------------------
-    def set_fullscreen(self, win, enable: bool = True):
-        """Pede acrescentar/remover _NET_WM_STATE_FULLSCREEN via ClientMessage."""
+    def update_client_list(self, wins: List, stacking: Optional[List] = None):
         try:
-            a_state = self.atoms.get("_NET_WM_STATE")
-            a_full = self.atoms.get("_NET_WM_STATE_FULLSCREEN")
-            if a_state is None or a_full is None:
-                logger.debug("Atoms _NET_WM_STATE/_NET_WM_STATE_FULLSCREEN faltando")
-                return
-            action = 1 if enable else 0  # 1 add, 0 remove, 2 toggle
-            self.send_client_message(win, a_state, (action, a_full, 0, 0, 0))
-        except Exception:
-            logger.exception("set_fullscreen falhou")
-
-    def is_fullscreen(self, win) -> bool:
-        """Lê propriedade _NET_WM_STATE e checa se fullscreen está presente."""
-        try:
-            prop = win.get_full_property(self.atoms.get("_NET_WM_STATE"), Xatom.ATOM)
-            if not prop:
-                return False
-            vals = prop.value
-            return self.atoms.get("_NET_WM_STATE_FULLSCREEN') in vals if False else self.atoms.get("_NET_WM_STATE_FULLSCREEN") in vals
-        except Exception:
-            logger.exception("is_fullscreen falhou")
-            return False
-
-    def set_maximized(self, win, enable: bool = True):
-        """Pede add/remove dos states maximized horz/vert."""
-        try:
-            a_state = self.atoms.get("_NET_WM_STATE")
-            a_h = self.atoms.get("_NET_WM_STATE_MAXIMIZED_HORZ")
-            a_v = self.atoms.get("_NET_WM_STATE_MAXIMIZED_VERT")
-            if a_state is None:
-                return
-            action = 1 if enable else 0
-            self.send_client_message(win, a_state, (action, a_h or 0, a_v or 0, 0, 0))
-        except Exception:
-            logger.exception("set_maximized falhou")
-
-    def is_maximized(self, win) -> bool:
-        try:
-            prop = win.get_full_property(self.atoms.get("_NET_WM_STATE"), Xatom.ATOM)
-            if not prop:
-                return False
-            vals = prop.value
-            return ((self.atoms.get("_NET_WM_STATE_MAXIMIZED_HORZ") in vals) and
-                    (self.atoms.get("_NET_WM_STATE_MAXIMIZED_VERT") in vals))
-        except Exception:
-            logger.exception("is_maximized falhou")
-            return False
-
-    # --------------------------
-    # Active window / client list
-    # --------------------------
-    def set_active_window(self, win):
-        try:
-            a_active = self.atoms.get("_NET_ACTIVE_WINDOW")
-            if not a_active:
-                return
-            data = (2, X.CurrentTime, 0, 0, 0)  # source indication = 2 (pager)
-            ev = protocol.event.ClientMessage(window=win, client_type=a_active, data=(32, data))
-            self.root.send_event(ev, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask)
-            self.dpy.flush()
-        except Exception:
-            logger.exception("set_active_window falhou")
-
-    def update_client_list(self, wins: List):
-        try:
-            a_client = self.atoms.get("_NET_CLIENT_LIST")
-            if not a_client:
-                return
-            window_ids = [getattr(w, "id", w) for w in wins]
-            self.root.change_property(a_client, Xatom.WINDOW, 32, window_ids)
+            ids = [getattr(w, "id", w) for w in wins]
+            self.root.change_property(self.atoms["_NET_CLIENT_LIST"], Xatom.WINDOW, 32, ids)
+            if stacking:
+                ids2 = [getattr(w, "id", w) for w in stacking]
+                self.root.change_property(self.atoms["_NET_CLIENT_LIST_STACKING"], Xatom.WINDOW, 32, ids2)
             self.dpy.flush()
         except Exception:
             logger.exception("update_client_list falhou")
 
     # --------------------------
-    # Desktops / names / current
+    # Active window
+    # --------------------------
+    def set_active_window(self, win):
+        try:
+            self.root.change_property(self.atoms["_NET_ACTIVE_WINDOW"], Xatom.WINDOW, 32, [win.id])
+            self.dpy.flush()
+        except Exception:
+            logger.exception("set_active_window falhou")
+
+    # --------------------------
+    # Desktops
     # --------------------------
     def set_number_of_desktops(self, n: int):
-        try:
-            a_num = self.atoms.get("_NET_NUMBER_OF_DESKTOPS")
-            if not a_num:
-                return
-            self.root.change_property(a_num, Xatom.CARDINAL, 32, [int(n)])
-            self.dpy.flush()
-        except Exception:
-            logger.exception("set_number_of_desktops falhou")
+        self.root.change_property(self.atoms["_NET_NUMBER_OF_DESKTOPS"], Xatom.CARDINAL, 32, [n])
 
     def set_desktop_names(self, names: List[str]):
-        try:
-            a_names = self.atoms.get("_NET_DESKTOP_NAMES")
-            utf8 = self.atoms.get("UTF8_STRING") or self._atom("UTF8_STRING")
-            if not a_names:
-                return
-            raw = b"\0".join([n.encode("utf-8") for n in names])
-            self.root.change_property(a_names, utf8, 8, raw)
-            self.dpy.flush()
-        except Exception:
-            logger.exception("set_desktop_names falhou")
+        raw = b"\0".join(n.encode("utf-8") for n in names)
+        self.root.change_property(self.atoms["_NET_DESKTOP_NAMES"], self.atoms["UTF8_STRING"], 8, raw)
 
     def set_current_desktop(self, idx: int):
-        try:
-            a_cur = self.atoms.get("_NET_CURRENT_DESKTOP")
-            if not a_cur:
-                return
-            self.root.change_property(a_cur, Xatom.CARDINAL, 32, [int(idx)])
-            self.dpy.flush()
-        except Exception:
-            logger.exception("set_current_desktop falhou")
+        self.root.change_property(self.atoms["_NET_CURRENT_DESKTOP"], Xatom.CARDINAL, 32, [idx])
+
+    def move_window_to_desktop(self, win, idx: int):
+        win.change_property(self.atoms["_NET_WM_DESKTOP"], Xatom.CARDINAL, 32, [idx])
 
     # --------------------------
-    # WM_DELETE helper
+    # Window state
     # --------------------------
-    def send_wm_delete(self, win):
+    def set_state(self, win, atom: str, enable: bool = True):
         try:
-            wm_protocols = self._atom("WM_PROTOCOLS")
-            wm_delete = self._atom("WM_DELETE_WINDOW")
-            ev = protocol.event.ClientMessage(window=win,
-                                              client_type=wm_protocols,
-                                              data=(32, (wm_delete, X.CurrentTime, 0, 0, 0)))
+            a_state = self.atoms["_NET_WM_STATE"]
+            current = win.get_full_property(a_state, Xatom.ATOM)
+            states = list(current.value) if current else []
+            target = self.atoms.get(atom)
+            if not target:
+                return
+            if enable and target not in states:
+                states.append(target)
+            elif not enable and target in states:
+                states.remove(target)
+            win.change_property(a_state, Xatom.ATOM, 32, states)
+            self.dpy.flush()
+        except Exception:
+            logger.exception("set_state falhou")
+
+    def get_states(self, win) -> List[str]:
+        try:
+            a_state = self.atoms["_NET_WM_STATE"]
+            current = win.get_full_property(a_state, Xatom.ATOM)
+            if not current:
+                return []
+            rev = {v: k for k, v in self.atoms.items()}
+            return [rev.get(x, str(x)) for x in current.value]
+        except Exception:
+            return []
+
+    # --------------------------
+    # Fullscreen / maximize
+    # --------------------------
+    def set_fullscreen(self, win, enable=True):
+        self.set_state(win, "_NET_WM_STATE_FULLSCREEN", enable)
+
+    def set_maximized(self, win, enable=True):
+        self.set_state(win, "_NET_WM_STATE_MAXIMIZED_VERT", enable)
+        self.set_state(win, "_NET_WM_STATE_MAXIMIZED_HORZ", enable)
+
+    # --------------------------
+    # Close window
+    # --------------------------
+    def close_window(self, win):
+        try:
+            wm_protocols = self.atoms["WM_PROTOCOLS"]
+            wm_delete = self.atoms["WM_DELETE_WINDOW"]
+            ev = protocol.event.ClientMessage(
+                window=win,
+                client_type=wm_protocols,
+                data=(32, (wm_delete, X.CurrentTime, 0, 0, 0))
+            )
             win.send_event(ev, event_mask=X.NoEventMask)
             self.dpy.flush()
         except Exception:
-            logger.exception("send_wm_delete falhou")
+            logger.exception("close_window falhou")
 
     # --------------------------
-    # Interpretar ClientMessage de _NET_WM_STATE
+    # Ping
     # --------------------------
-    def parse_net_wm_state_message(self, ev):
-        """
-        Retorna (action, atom1, atom2) extraídos de ClientMessage event.
-        action: 0 remove, 1 add, 2 toggle
-        atom1, atom2: atom numbers (integers)
-        """
+    def respond_ping(self, ev):
         try:
-            if not hasattr(ev, "data") or not hasattr(ev.data, "data32"):
-                return None
+            if ev.client_type != self.atoms["_NET_WM_PING"]:
+                return
             data = ev.data.data32
-            action = int(data[0])
-            atom1 = int(data[1])
-            atom2 = int(data[2])
-            return (action, atom1, atom2)
+            timestamp, win_id = data[1], data[2]
+            response = protocol.event.ClientMessage(
+                window=self.root,
+                client_type=self.atoms["_NET_WM_PING"],
+                data=(32, (0, timestamp, win_id, 0, 0))
+            )
+            self.root.send_event(response, event_mask=X.SubstructureNotifyMask)
+            self.dpy.flush()
         except Exception:
-            logger.exception("parse_net_wm_state_message falhou")
-            return None
+            logger.exception("respond_ping falhou")
