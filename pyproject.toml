@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mywm"
+version = "1.0.0"
+description = "A lightweight and extensible tiling window manager"
+readme = "README.md"
+authors = [{ name="Seu Nome", email="seuemail@example.com" }]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+
+dependencies = [
+    "xcffib>=0.12.1",
+    "cairocffi>=1.6.1",
+    "pygobject>=3.42.0",
+]
+
+[project.scripts]
+mwm = "mywm1.0.main:main"
