@@ -1,161 +1,420 @@
 # core/ewmh.py
-# Implementação EWMH avançada para MyWM 1.0+
 
-from Xlib import X, Xatom, display
+"""
+EWMHManager para MyWM: implementação mais completa do protocolo EWMH / NetWM.
 
-dpy = display.Display()
-root = dpy.screen().root
+Fornece:
+- inicialização (_NET_SUPPORTING_WM_CHECK, nomes de desktops, etc.)
+- manipulação de workspaces/desktops
+- listagem de clientes (janelas)
+- propriedades de janelas: fullscreen, maximized, estados
+- leitura de nome da janela
+- atualização automática quando o estado interno do WM muda
 
-# =======================
-# ATOMS
-# =======================
-NET_SUPPORTED = dpy.intern_atom("_NET_SUPPORTED")
-NET_WM_NAME = dpy.intern_atom("_NET_WM_NAME")
-NET_CLIENT_LIST = dpy.intern_atom("_NET_CLIENT_LIST")
-NET_ACTIVE_WINDOW = dpy.intern_atom("_NET_ACTIVE_WINDOW")
-NET_NUMBER_OF_DESKTOPS = dpy.intern_atom("_NET_NUMBER_OF_DESKTOPS")
-NET_CURRENT_DESKTOP = dpy.intern_atom("_NET_CURRENT_DESKTOP")
-NET_DESKTOP_NAMES = dpy.intern_atom("_NET_DESKTOP_NAMES")
-NET_DESKTOP_VIEWPORT = dpy.intern_atom("_NET_DESKTOP_VIEWPORT")
-NET_SHOWING_DESKTOP = dpy.intern_atom("_NET_SHOWING_DESKTOP")
+Uso típico:
+    e = EWMHManager(wm, wm_name="MyWM", workspaces=["1","2","3"])
+    e.init()
+    ...
+    e.set_active_window(win)
+    e.update_client_list(wm.windows)
+    e.set_current_desktop(2)
+    e.set_fullscreen(win, True)
+"""
 
-NET_WM_STATE = dpy.intern_atom("_NET_WM_STATE")
-NET_WM_STATE_FULLSCREEN = dpy.intern_atom("_NET_WM_STATE_FULLSCREEN")
-NET_WM_STATE_MAXIMIZED_VERT = dpy.intern_atom("_NET_WM_STATE_MAXIMIZED_VERT")
-NET_WM_STATE_MAXIMIZED_HORZ = dpy.intern_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
+from typing import List, Optional, Any
+import logging
+from Xlib import X, Xatom, display, protocol
 
-NET_SUPPORTING_WM_CHECK = dpy.intern_atom("_NET_SUPPORTING_WM_CHECK")
+logger = logging.getLogger("mywm.ewmh")
+logger.addHandler(logging.NullHandler())
 
-UTF8_STRING = dpy.intern_atom("UTF8_STRING")
 
-# =======================
-# WM CHECK WINDOW
-# =======================
-wm_check = None
-workspace_names = []
-current_desktop = 0
+class EWMHManager:
+    def __init__(self, wm, wm_name: str = "MyWM", workspaces: Optional[List[str]] = None):
+        """
+        :param wm: instância do seu window manager, para pegar display, root, lista de janelas etc.
+        :param wm_name: nome do WM que aparecerá nas propriedades EWMH
+        :param workspaces: lista de nomes de workspaces/desktops
+        """
+        self.wm = wm
+        self.wm_name = wm_name
+        self.workspaces = workspaces if workspaces is not None else [str(i + 1) for i in range(9)]
+        self.current_desktop = 0
 
-def init_ewmh(wm_name="MyWM", workspaces=None):
-    """Inicializa suporte EWMH com nomes de workspaces"""
-    global wm_check, workspace_names, current_desktop
+        # prepare display and root
+        try:
+            self.dpy = getattr(wm, "dpy")
+        except AttributeError:
+            self.dpy = display.Display()
+        self.root = self.dpy.screen().root
 
-    workspace_names = workspaces if workspaces else [str(i+1) for i in range(9)]
-    current_desktop = 0
+        # cache de átomos
+        self._atom_cache = {}
+        self._ewmh_atoms = {}
 
-    # Cria janela dummy para _NET_SUPPORTING_WM_CHECK
-    wm_check = root.create_window(0, 0, 1, 1, 0,
-                                  X.CopyFromParent,
-                                  X.InputOutput,
-                                  X.CopyFromParent)
-    wm_check.change_property(NET_SUPPORTING_WM_CHECK, Xatom.WINDOW, 32, [wm_check.id])
-    wm_check.change_property(NET_WM_NAME, UTF8_STRING, 8, wm_name.encode())
+        # Átomos EWMH principais que usaremos frequentemente
+        self._init_atoms()
 
-    # Root aponta para essa janela
-    root.change_property(NET_SUPPORTING_WM_CHECK, Xatom.WINDOW, 32, [wm_check.id])
+        # janela de verificação (WM check)
+        self._wm_check_window = None
 
-    # Nome do WM (EWMH)
-    root.change_property(NET_WM_NAME, UTF8_STRING, 8, wm_name.encode())
+    def _intern_atom(self, name: str, only_if_exists: bool = False) -> int:
+        """
+        Interna um átomo e o cacheia para uso futuro.
+        """
+        if name in self._atom_cache:
+            return self._atom_cache[name]
+        try:
+            atom = self.dpy.intern_atom(name, only_if_exists=only_if_exists)
+            self._atom_cache[name] = atom
+            return atom
+        except Exception:
+            logger.exception("Falha ao internar átomo %s", name)
+            return 0
 
-    # Fallback ICCCM
-    root.change_property(dpy.intern_atom("WM_NAME"), Xatom.STRING, 8, wm_name.encode())
-    root.change_property(dpy.intern_atom("WM_CLASS"), Xatom.STRING, 8, wm_name.encode())
+    def _init_atoms(self):
+        """
+        Inicialização de todos os átomos que serão usados EWMH.
+        """
+        names = [
+            "_NET_SUPPORTED", "_NET_WM_NAME", "_NET_CLIENT_LIST", "_NET_ACTIVE_WINDOW",
+            "_NET_NUMBER_OF_DESKTOPS", "_NET_CURRENT_DESKTOP", "_NET_DESKTOP_NAMES",
+            "_NET_DESKTOP_VIEWPORT", "_NET_SHOWING_DESKTOP", "_NET_WM_STATE",
+            "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_MAXIMIZED_VERT",
+            "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_SUPPORTING_WM_CHECK", "UTF8_STRING"
+        ]
+        for name in names:
+            self._ewmh_atoms[name] = self._intern_atom(name)
 
-    # Número de workspaces
-    root.change_property(NET_NUMBER_OF_DESKTOPS, Xatom.CARDINAL, 32, [len(workspace_names)])
+    def init(self):
+        """
+        Configura as propriedades iniciais do root para indicar suporte EWMH:
+        - _NET_SUPPORTING_WM_CHECK
+        - nomes de workspaces
+        - número de desktops
+        etc.
+        Deve ser chamado uma vez no startup do WM.
+        """
+        try:
+            # Create WM_CHECK window
+            wm_check = self.root.create_window(
+                0, 0, 1, 1, 0,
+                X.CopyFromParent,
+                X.InputOutput,
+                X.CopyFromParent
+            )
+            self._wm_check_window = wm_check
 
-    # Workspace atual default = 0
-    root.change_property(NET_CURRENT_DESKTOP, Xatom.CARDINAL, 32, [current_desktop])
+            # WM_CHECK propriedades
+            wm_check.change_property(
+                self._ewmh_atoms["_NET_SUPPORTING_WM_CHECK"],
+                Xatom.WINDOW,
+                32,
+                [wm_check.id]
+            )
+            wm_check.change_property(
+                self._ewmh_atoms["_NET_WM_NAME"],
+                self._ewmh_atoms["UTF8_STRING"],
+                8,
+                self.wm_name.encode()
+            )
 
-    # Nomes dos workspaces
-    names_bytes = b"\0".join([n.encode() for n in workspace_names])
-    root.change_property(NET_DESKTOP_NAMES, UTF8_STRING, 8, names_bytes)
+            # root aponta para a janela de checagem
+            self.root.change_property(
+                self._ewmh_atoms["_NET_SUPPORTING_WM_CHECK"],
+                Xatom.WINDOW,
+                32,
+                [wm_check.id]
+            )
+            self.root.change_property(
+                self._ewmh_atoms["_NET_WM_NAME"],
+                self._ewmh_atoms["UTF8_STRING"],
+                8,
+                self.wm_name.encode()
+            )
+            # fallback ICCCM
+            self.root.change_property(
+                self.dpy.intern_atom("WM_NAME"),
+                Xatom.STRING,
+                8,
+                self.wm_name.encode()
+            )
 
-    # Viewport (um por desktop, aqui sempre [0,0])
-    viewports = []
-    for _ in workspace_names:
-        viewports += [0, 0]
-    root.change_property(NET_DESKTOP_VIEWPORT, Xatom.CARDINAL, 32, viewports)
+            # Number of desktops
+            self.root.change_property(
+                self._ewmh_atoms["_NET_NUMBER_OF_DESKTOPS"],
+                Xatom.CARDINAL,
+                32,
+                [len(self.workspaces)]
+            )
 
-    # Showing desktop (0 = normal, 1 = mostrar área de trabalho)
-    root.change_property(NET_SHOWING_DESKTOP, Xatom.CARDINAL, 32, [0])
+            # Current desktop
+            self.root.change_property(
+                self._ewmh_atoms["_NET_CURRENT_DESKTOP"],
+                Xatom.CARDINAL,
+                32,
+                [self.current_desktop]
+            )
 
-    # Propriedades suportadas
-    supported_atoms = [
-        NET_SUPPORTED,
-        NET_WM_NAME,
-        NET_CLIENT_LIST,
-        NET_ACTIVE_WINDOW,
-        NET_NUMBER_OF_DESKTOPS,
-        NET_CURRENT_DESKTOP,
-        NET_DESKTOP_NAMES,
-        NET_DESKTOP_VIEWPORT,
-        NET_SHOWING_DESKTOP,
-        NET_WM_STATE,
-        NET_WM_STATE_FULLSCREEN,
-        NET_WM_STATE_MAXIMIZED_VERT,
-        NET_WM_STATE_MAXIMIZED_HORZ,
-        NET_SUPPORTING_WM_CHECK
-    ]
-    root.change_property(NET_SUPPORTED, Xatom.ATOM, 32, supported_atoms)
+            # Names of desktops
+            names_bytes = b"\0".join([name.encode() for name in self.workspaces])
+            self.root.change_property(
+                self._ewmh_atoms["_NET_DESKTOP_NAMES"],
+                self._ewmh_atoms["UTF8_STRING"],
+                8,
+                names_bytes
+            )
 
-    dpy.flush()
+            # Desktop viewport (geralmente [0,0] para cada desktop)
+            viewports = []
+            for _ in self.workspaces:
+                viewports.extend([0, 0])
+            self.root.change_property(
+                self._ewmh_atoms["_NET_DESKTOP_VIEWPORT"],
+                Xatom.CARDINAL,
+                32,
+                viewports
+            )
 
-# =======================
-# CLIENT LIST
-# =======================
-def update_client_list(windows):
-    ids = [w.id for w in windows if hasattr(w, "id")]
-    root.change_property(NET_CLIENT_LIST, Xatom.WINDOW, 32, ids)
-    dpy.flush()
+            # Showing desktop
+            self.root.change_property(
+                self._ewmh_atoms["_NET_SHOWING_DESKTOP"],
+                Xatom.CARDINAL,
+                32,
+                [0]
+            )
 
-# =======================
-# ACTIVE WINDOW
-# =======================
-def set_active_window(win):
-    wid = win.id if win else 0
-    root.change_property(NET_ACTIVE_WINDOW, Xatom.WINDOW, 32, [wid])
-    dpy.flush()
+            # Supported atoms
+            supported = [self._ewmh_atoms[name] for name in self._ewmh_atoms]
+            self.root.change_property(
+                self._ewmh_atoms["_NET_SUPPORTED"],
+                Xatom.ATOM,
+                32,
+                supported
+            )
 
-# =======================
-# WORKSPACES
-# =======================
-def set_current_desktop(idx):
-    global current_desktop
-    current_desktop = idx
-    root.change_property(NET_CURRENT_DESKTOP, Xatom.CARDINAL, 32, [idx])
-    dpy.flush()
+            self.dpy.flush()
+            logger.info("EWMH init completo: workspaces=%s", self.workspaces)
+        except Exception:
+            logger.exception("Falha durante init de EWMH")
 
-def set_number_of_desktops(n, names=None):
-    global workspace_names
-    root.change_property(NET_NUMBER_OF_DESKTOPS, Xatom.CARDINAL, 32, [n])
-    if names:
-        workspace_names = names
-        names_bytes = b"\0".join([n.encode() for n in workspace_names])
-        root.change_property(NET_DESKTOP_NAMES, UTF8_STRING, 8, names_bytes)
-    dpy.flush()
+    def update_client_list(self, windows: List[Any]):
+        """
+        Atualiza a propriedade _NET_CLIENT_LIST com as janelas gerenciadas atualmente.
+        Chamar sempre que janelas forem adicionadas/removidas.
+        """
+        try:
+            ids = [w.id for w in windows if hasattr(w, "id")]
+            self.root.change_property(
+                self._ewmh_atoms["_NET_CLIENT_LIST"],
+                Xatom.WINDOW,
+                32,
+                ids
+            )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha update_client_list")
 
-def toggle_showing_desktop(enable=True):
-    root.change_property(NET_SHOWING_DESKTOP, Xatom.CARDINAL, 32, [1 if enable else 0])
-    dpy.flush()
+    def set_active_window(self, win: Optional[Any]):
+        """
+        Marca uma janela como ativa no EWMH: _NET_ACTIVE_WINDOW.
+        """
+        try:
+            wid = win.id if win is not None else 0
+            self.root.change_property(
+                self._ewmh_atoms["_NET_ACTIVE_WINDOW"],
+                Xatom.WINDOW,
+                32,
+                [wid]
+            )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha set_active_window")
 
-# =======================
-# WINDOW STATE
-# =======================
-def set_fullscreen(win, enable=True):
-    if not win:
-        return
-    if enable:
-        win.change_property(NET_WM_STATE, Xatom.ATOM, 32, [NET_WM_STATE_FULLSCREEN])
-    else:
-        win.delete_property(NET_WM_STATE)
-    dpy.flush()
+    def set_current_desktop(self, idx: int):
+        """
+        Trocar desktop/workspace ativo.
+        """
+        if idx < 0 or idx >= len(self.workspaces):
+            logger.warning("desktop index fora de faixa: %s", idx)
+            return
+        try:
+            self.current_desktop = idx
+            self.root.change_property(
+                self._ewmh_atoms["_NET_CURRENT_DESKTOP"],
+                Xatom.CARDINAL,
+                32,
+                [idx]
+            )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha set_current_desktop")
 
-def set_maximized(win, enable=True):
-    if not win:
-        return
-    if enable:
-        win.change_property(NET_WM_STATE, Xatom.ATOM, 32,
-                            [NET_WM_STATE_MAXIMIZED_VERT, NET_WM_STATE_MAXIMIZED_HORZ])
-    else:
-        win.delete_property(NET_WM_STATE)
-    dpy.flush()
+    def set_number_of_desktops(self, n: int, names: Optional[List[str]] = None):
+        """
+        Ajustar número de desktops / workspaces.
+        Se fornecer nomes, atualiza os nomes também.
+        """
+        if n < 1:
+            logger.warning("Tentativa de setar number_of_desktops menor que 1: %s", n)
+            return
+        try:
+            self.workspaces = names if (names and len(names) == n) else [str(i+1) for i in range(n)]
+            self.root.change_property(
+                self._ewmh_atoms["_NET_NUMBER_OF_DESKTOPS"],
+                Xatom.CARDINAL,
+                32,
+                [n]
+            )
+            names_bytes = b"\0".join([nm.encode() for nm in self.workspaces])
+            self.root.change_property(
+                self._ewmh_atoms["_NET_DESKTOP_NAMES"],
+                self._ewmh_atoms["UTF8_STRING"],
+                8,
+                names_bytes
+            )
+            self.dpy.flush()
+            logger.info("Número de desktops alterado: %s, nomes=%s", n, self.workspaces)
+        except Exception:
+            logger.exception("Falha set_number_of_desktops")
+
+    def toggle_showing_desktop(self, enable: bool = True):
+        """
+        Marca/desmarca Showing Desktop (_NET_SHOWING_DESKTOP)
+        """
+        try:
+            value = 1 if enable else 0
+            self.root.change_property(
+                self._ewmh_atoms["_NET_SHOWING_DESKTOP"],
+                Xatom.CARDINAL,
+                32,
+                [value]
+            )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha toggle_showing_desktop")
+
+    def set_fullscreen(self, win: Any, enable: bool = True):
+        """
+        Seta ou remove o estado fullscreen numa janela via _NET_WM_STATE_FULLSCREEN
+        """
+        if win is None:
+            return
+        try:
+            if enable:
+                win.change_property(
+                    self._ewmh_atoms["_NET_WM_STATE"],
+                    Xatom.ATOM,
+                    32,
+                    [self._ewmh_atoms["_NET_WM_STATE_FULLSCREEN]]
+                )
+            else:
+                try:
+                    win.delete_property(self._ewmh_atoms["_NET_WM_STATE"])
+                except Exception:
+                    win.change_property(
+                        self._ewmh_atoms["_NET_WM_STATE"],
+                        Xatom.ATOM,
+                        32,
+                        []
+                    )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha set_fullscreen")
+
+    def set_maximized(self, win: Any, enable: bool = True):
+        """
+        Seta ou remove maximized vertical + horizontal
+        """
+        if win is None:
+            return
+        try:
+            if enable:
+                win.change_property(
+                    self._ewmh_atoms["_NET_WM_STATE"],
+                    Xatom.ATOM,
+                    32,
+                    [
+                        self._ewmh_atoms["_NET_WM_STATE_MAXIMIZED_VERT"],
+                        self._ewmh_atoms["_NET_WM_STATE_MAXIMIZED_HORZ"]
+                    ]
+                )
+            else:
+                try:
+                    win.delete_property(self._ewmh_atoms["_NET_WM_STATE"])
+                except Exception:
+                    win.change_property(
+                        self._ewmh_atoms["_NET_WM_STATE"],
+                        Xatom.ATOM,
+                        32,
+                        []
+                    )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha set_maximized")
+
+    def get_window_name(self, win: Any) -> str:
+        """
+        Retorna o nome (titulo) da janela, conforme _NET_WM_NAME ou WM_NAME fallback.
+        """
+        if win is None:
+            return ""
+        try:
+            # tentar _NET_WM_NAME
+            prop = win.get_property(
+                self._ewmh_atoms["_NET_WM_NAME"],
+                self._ewmh_atoms["UTF8_STRING"],
+                0, 1024
+            )
+            if prop and prop.value:
+                # Xlib retorna estrutura com .value como bytes
+                name = prop.value
+                if isinstance(name, bytes):
+                    try:
+                        return name.decode("utf-8", errors="ignore")
+                    except Exception:
+                        return str(name)
+                else:
+                    return str(name)
+        except Exception:
+            logger.debug("Falha lendo _NET_WM_NAME de %s", getattr(win, "id", win))
+        # fallback WM_NAME
+        try:
+            prop2 = win.get_wm_name()
+            return prop2 or ""
+        except Exception:
+            return ""
+
+    def update_supported_states(self, win: Any, states: List[str]):
+        """
+        Permite configurar múltiplos estados para janela, ex: maximized, fullscreen.
+        `states` deve conter strings como: "fullscreen", "maximized_vert", "maximized_horz".
+        Outros estados podem ser implementados.
+        """
+        if win is None:
+            return
+        try:
+            state_atoms = []
+            for st in states:
+                key = None
+                if st == "fullscreen":
+                    key = "_NET_WM_STATE_FULLSCREEN"
+                elif st == "maximized_vert":
+                    key = "_NET_WM_STATE_MAXIMIZED_VERT"
+                elif st == "maximized_horz":
+                    key = "_NET_WM_STATE_MAXIMIZED_HORZ"
+                else:
+                    logger.warning("Estado EWMH desconhecido: %s", st)
+                    continue
+                atom = self._ewmh_atoms.get(key)
+                if atom:
+                    state_atoms.append(atom)
+            win.change_property(
+                self._ewmh_atoms["_NET_WM_STATE"],
+                Xatom.ATOM,
+                32,
+                state_atoms
+            )
+            self.dpy.flush()
+        except Exception:
+            logger.exception("Falha update_supported_states")
