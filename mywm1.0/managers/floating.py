@@ -1,180 +1,117 @@
 # mywm1.0/managers/floating.py
 """
-FloatingManager
-- Persistência de posições
-- Snap to edges
-- Move/resize por teclado
-- Raise / lower
-- Animação opcional (simples)
+Floating Window Manager para mwm
+Controle de janelas flutuantes com suporte EWMH estendido
 """
 
 import logging
-import time
-import json
-import os
-from typing import Any, Dict, Optional, Tuple
-
 from Xlib import X
+from Xlib.protocol import event
 
 logger = logging.getLogger("mywm.floating")
 logger.addHandler(logging.NullHandler())
 
-DEFAULT_STATE_FILE = os.path.expanduser("~/.config/mywm/floating.json")
-
 
 class FloatingManager:
-    def __init__(self, wm, state_file: str = DEFAULT_STATE_FILE, snap_threshold: int = 16, animation: bool = False):
+    def __init__(self, wm):
         self.wm = wm
-        self.dpy = getattr(wm, "dpy")
-        self.root = getattr(wm, "root")
-        self.snap_threshold = snap_threshold
-        self.animation = animation
-        self.state_file = os.path.expanduser(state_file)
-        self.positions: Dict[str, Dict] = {}
-        self._load_state()
+        self.floating_windows = set()
 
-    # persistence
-    def _load_state(self):
-        try:
-            if os.path.exists(self.state_file):
-                with open(self.state_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict):
-                        self.positions = data
-        except Exception:
-            logger.exception("Falha ao carregar estado do floating")
-
-    def _save_state(self):
-        try:
-            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
-            with open(self.state_file, "w", encoding="utf-8") as f:
-                json.dump(self.positions, f, indent=2)
-        except Exception:
-            logger.exception("Falha ao salvar estado do floating")
-
-    def _wid(self, win: Any) -> str:
-        return str(getattr(win, "id", win))
-
-    # set / restore
-    def set_position(self, win: Any, x: int, y: int, width: Optional[int] = None, height: Optional[int] = None, save: bool = True):
-        wid = self._wid(win)
-        geom = {"x": int(x), "y": int(y)}
-        if width is not None:
-            geom["width"] = int(width)
-        if height is not None:
-            geom["height"] = int(height)
-        self.positions[wid] = geom
-        self._apply_configure(win, geom)
-        if save:
-            self._save_state()
-
-    def restore_position(self, win: Any):
-        wid = self._wid(win)
-        p = self.positions.get(wid)
-        if not p:
-            return
-        try:
-            args = {}
-            if "x" in p: args["x"] = int(p["x"])
-            if "y" in p: args["y"] = int(p["y"])
-            if "width" in p: args["width"] = int(p["width"])
-            if "height" in p: args["height"] = int(p["height"])
-            self._apply_configure(win, args)
-        except Exception:
-            logger.exception("restore_position falhou para %s", wid)
-
-    def _apply_configure(self, win: Any, args: Dict):
-        try:
-            if self.animation:
-                self._animate(win, args)
-            else:
-                win.configure(**args)
-                if self.dpy:
-                    self.dpy.flush()
-        except Exception:
-            logger.exception("Falha ao aplicar configure em floating")
-
-    # snap
-    def snap_to_edges(self, x: int, y: int, w: int, h: int, screen_geom=None) -> Tuple[int, int]:
-        th = self.snap_threshold
-        if screen_geom:
-            sx, sy, sw, sh = screen_geom.x, screen_geom.y, screen_geom.width, screen_geom.height
+    # --------------------------
+    # Controle de estado
+    # --------------------------
+    def toggle_floating(self, win):
+        if win in self.floating_windows:
+            self.set_floating(win, False)
         else:
-            try:
-                rg = self.root.get_geometry()
-                sx, sy, sw, sh = rg.x, rg.y, rg.width, rg.height
-            except Exception:
-                sx, sy, sw, sh = 0, 0, 0, 0
-        nx, ny = x, y
-        if abs(x - sx) <= th:
-            nx = sx
-        if abs(y - sy) <= th:
-            ny = sy
-        if sw and abs((x + w) - (sx + sw)) <= th:
-            nx = sx + sw - w
-        if sh and abs((y + h) - (sy + sh)) <= th:
-            ny = sy + sh - h
-        return nx, ny
+            self.set_floating(win, True)
 
-    # keyboard move / resize
-    def move_by(self, win: Any, dx: int, dy: int, snap: bool = True, save: bool = True, screen_geom=None):
-        try:
-            g = win.get_geometry()
-            newx = g.x + dx
-            newy = g.y + dy
-            nw, nh = g.width, g.height
-            if snap:
-                newx, newy = self.snap_to_edges(newx, newy, nw, nh, screen_geom)
-            self.set_position(win, newx, newy, nw, nh, save=save)
-        except Exception:
-            logger.exception("move_by falhou")
+    def set_floating(self, win, enable=True, center=True):
+        if enable:
+            self.floating_windows.add(win)
+            win.is_floating = True
+            if center:
+                self.center_window(win)
+            # Marca estado EWMH
+            self.wm.ewmh.set_state(win, "_NET_WM_STATE_ABOVE", True)
+            self.wm.ewmh.set_state(win, "_NET_WM_STATE_SKIP_TASKBAR", True)
+            logger.debug("Janela %s em floating", win.id)
+        else:
+            if win in self.floating_windows:
+                self.floating_windows.remove(win)
+            win.is_floating = False
+            # Remove estados
+            self.wm.ewmh.set_state(win, "_NET_WM_STATE_ABOVE", False)
+            self.wm.ewmh.set_state(win, "_NET_WM_STATE_SKIP_TASKBAR", False)
+            logger.debug("Janela %s voltou para tiling", win.id)
+        self.wm.refresh_layout()
 
-    def resize_by(self, win: Any, dw: int, dh: int, save: bool = True):
-        try:
-            g = win.get_geometry()
-            neww = max(50, g.width + dw)
-            newh = max(50, g.height + dh)
-            self.set_position(win, g.x, g.y, neww, newh, save=save)
-        except Exception:
-            logger.exception("resize_by falhou")
+    # --------------------------
+    # Posicionamento
+    # --------------------------
+    def center_window(self, win):
+        scr = self.wm.dpy.screen()
+        w, h = win.get_geometry().width, win.get_geometry().height
+        x = (scr.width_in_pixels - w) // 2
+        y = (scr.height_in_pixels - h) // 2
+        win.configure(x=x, y=y)
+        self.wm.dpy.flush()
 
-    # raise/lower
-    def raise_window(self, win: Any):
-        try:
-            win.configure(stack_mode=X.Above)
-            if self.dpy:
-                self.dpy.flush()
-        except Exception:
-            logger.exception("raise_window falhou")
+    def move_window(self, win, dx, dy):
+        g = win.get_geometry()
+        win.configure(x=g.x + dx, y=g.y + dy)
+        self.wm.dpy.flush()
 
-    def lower_window(self, win: Any):
-        try:
-            win.configure(stack_mode=X.Below)
-            if self.dpy:
-                self.dpy.flush()
-        except Exception:
-            logger.exception("lower_window falhou")
+    def resize_window(self, win, dw, dh):
+        g = win.get_geometry()
+        new_w = max(50, g.width + dw)
+        new_h = max(50, g.height + dh)
+        win.configure(width=new_w, height=new_h)
+        self.wm.dpy.flush()
 
-    # animation (simple linear)
-    def _animate(self, win: Any, target: Dict, steps: int = 6, delay: float = 0.01):
-        try:
-            geom = win.get_geometry()
-            sx, sy, sw, sh = geom.x, geom.y, geom.width, geom.height
-            tx = target.get("x", sx)
-            ty = target.get("y", sy)
-            tw = target.get("width", sw)
-            th = target.get("height", sh)
-            for i in range(1, steps + 1):
-                nx = int(sx + (tx - sx) * i / steps)
-                ny = int(sy + (ty - sy) * i / steps)
-                nw = int(sw + (tw - sw) * i / steps)
-                nh = int(sh + (th - sh) * i / steps)
-                try:
-                    win.configure(x=nx, y=ny, width=nw, height=nh)
-                    if self.dpy:
-                        self.dpy.flush()
-                except Exception:
-                    pass
-                time.sleep(delay)
-        except Exception:
-            logger.exception("animate falhou")
+    # --------------------------
+    # Eventos de mouse
+    # --------------------------
+    def handle_button_press(self, ev: event.ButtonPress):
+        if not getattr(self.wm, "config", None):
+            return
+        mod = self.wm.config.MOD_MASK
+        if ev.state & mod:  # se apertou Mod
+            win = ev.child
+            if not win:
+                return
+            if ev.detail == 1:  # botão esquerdo → mover
+                self.start_move_resize(win, mode="move", ev=ev)
+            elif ev.detail == 3:  # botão direito → resize
+                self.start_move_resize(win, mode="resize", ev=ev)
+
+    def start_move_resize(self, win, mode="move", ev=None):
+        """Inicia interação de mover ou redimensionar"""
+        self._drag_win = win
+        self._drag_mode = mode
+        self._drag_start = (ev.root_x, ev.root_y)
+        self._orig_geom = win.get_geometry()
+
+    def handle_motion_notify(self, ev: event.MotionNotify):
+        if not hasattr(self, "_drag_win"):
+            return
+        dx = ev.root_x - self._drag_start[0]
+        dy = ev.root_y - self._drag_start[1]
+        if self._drag_mode == "move":
+            self._drag_win.configure(
+                x=self._orig_geom.x + dx,
+                y=self._orig_geom.y + dy
+            )
+        elif self._drag_mode == "resize":
+            self._drag_win.configure(
+                width=max(50, self._orig_geom.width + dx),
+                height=max(50, self._orig_geom.height + dy)
+            )
+        self.wm.dpy.flush()
+
+    def handle_button_release(self, ev: event.ButtonRelease):
+        if hasattr(self, "_drag_win"):
+            del self._drag_win
+            del self._drag_mode
+            del self._drag_start
+            del self._orig_geom
