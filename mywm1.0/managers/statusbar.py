@@ -1,149 +1,201 @@
-# mywm1.0/managers/statusbar.py
+# mywm1.0/core/statusbar.py
 """
-StatusBar manager (lemonbar backend)
-- Constrói linhas de status e escreve para stdin do `lemonbar`
-- Widgets simples: clock, workspaces, layout; API para registrar callbacks
-- Leva vantagem de lemonbar para render e simplicidade
+StatusBar avançada para mwm.
+- Suporte a segmentos coloridos.
+- Infos: workspaces, janela ativa, CPU, RAM, hora, bateria, volume.
+- Interatividade com mouse (clique em workspace muda workspace).
+- Integração EWMH (reserva espaço com _NET_WM_STRUT_PARTIAL).
 """
 
-import logging
-import subprocess
 import threading
 import time
+import psutil
+import subprocess
+from datetime import datetime
 from typing import Callable, Dict, Optional
 
-logger = logging.getLogger("mywm.statusbar")
-logger.addHandler(logging.NullHandler())
+from Xlib import X, Xatom, display, Xutil
 
 
 class StatusBar:
-    def __init__(self, wm, lemonbar_cmd: Optional[str] = "lemonbar -p -g 1920x24+0+0 -B '#222' -F '#fff'"):
-        """
-        lemonbar_cmd: comando para criar barra (string). Se None, statusbar roda em 'dry' mode (apenas builds string)
-        """
+    def __init__(self, wm, height: int = 24, bg_color: str = "#222222", fg_color: str = "#ffffff", font: str = "fixed"):
         self.wm = wm
-        self.lemonbar_cmd = lemonbar_cmd
-        self._proc: Optional[subprocess.Popen] = None
-        self._lock = threading.Lock()
-        self._widgets: Dict[str, Callable[[], str]] = {}
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self.interval = 1.0
+        self.dpy = wm.dpy
+        self.root = wm.root
+        self.screen = self.dpy.screen()
 
-    def register_widget(self, name: str, callback: Callable[[], str]):
-        """Callback returns string to show in bar."""
-        self._widgets[name] = callback
+        self.height = height
+        self.bg_color = bg_color
+        self.fg_color = fg_color
+        self.font_name = font
 
-    def unregister_widget(self, name: str):
-        self._widgets.pop(name, None)
+        # informações dinâmicas
+        self.current_workspace = "1"
+        self.active_window_title = ""
+        self.cpu_usage = "0%"
+        self.mem_usage = "0%"
+        self.datetime_str = ""
+        self.battery = ""
+        self.volume = ""
+        self.monitor_name = "Screen-0"
 
-    def _build_status_line(self) -> str:
-        parts = []
-        # left area: workspaces/layout
+        # criar janela dock
+        self.win = self._create_bar_window()
+        self.gc = self._create_gc()
+
+        # Eventos de clique
+        self.win.change_attributes(event_mask=X.ExposureMask | X.ButtonPressMask)
+
+        # iniciar loop de atualização
+        self.running = True
+        self.thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.thread.start()
+
+    # --------------------------
+    # Criação da janela dock
+    # --------------------------
+    def _create_bar_window(self):
+        width = self.screen.width_in_pixels
+        win = self.root.create_window(
+            0, 0, width, self.height, 0,
+            self.screen.root_depth,
+            X.InputOutput,
+            X.CopyFromParent,
+            background_pixel=self._color_pixel(self.bg_color),
+        )
+        ewmh = self.wm.ewmh
+        # tipo dock
+        win.change_property(
+            ewmh.atom("_NET_WM_WINDOW_TYPE"),
+            Xatom.ATOM, 32,
+            [ewmh.atom("_NET_WM_WINDOW_TYPE_DOCK")]
+        )
+        # reserva espaço (strut partial)
+        height = self.height
+        width = self.screen.width_in_pixels
+        strut = [0, 0, height, 0]  # top reservado
+        strut_partial = [0, 0, height, 0, 0, 0, width, 0, 0, 0, 0, 0]
+        win.change_property(ewmh.atom("_NET_WM_STRUT"), Xatom.CARDINAL, 32, strut)
+        win.change_property(ewmh.atom("_NET_WM_STRUT_PARTIAL"), Xatom.CARDINAL, 32, strut_partial)
+
+        # acima
+        win.change_property(
+            ewmh.atom("_NET_WM_STATE"),
+            Xatom.ATOM, 32,
+            [ewmh.atom("_NET_WM_STATE_ABOVE"), ewmh.atom("_NET_WM_STATE_SKIP_TASKBAR")]
+        )
+        win.map()
+        self.dpy.flush()
+        return win
+
+    def _create_gc(self):
+        gc = self.win.create_gc(
+            foreground=self._color_pixel(self.fg_color),
+            background=self._color_pixel(self.bg_color),
+            font=self._default_font()
+        )
+        return gc
+
+    def _color_pixel(self, hex_color: str):
+        colormap = self.screen.default_colormap
+        rgb = tuple(int(hex_color[i:i+2], 16) * 256 for i in (1, 3, 5))
+        color = colormap.alloc_color(*rgb)
+        return color.pixel
+
+    def _default_font(self):
         try:
-            for k, cb in self._widgets.items():
-                try:
-                    v = cb()
-                except Exception:
-                    v = ""
-                if v is None:
-                    v = ""
-                parts.append(str(v))
+            return self.dpy.open_font(self.font_name)
         except Exception:
-            logger.exception("Falha construindo status line")
-        # join with separator
-        return "  |  ".join([p for p in parts if p])
+            return self.dpy.open_font("fixed")
 
-    def start(self, interval: float = 1.0):
-        """Start thread that writes to lemonbar stdin periodically."""
-        if self._running:
-            return
-        self.interval = interval
-        self._running = True
-        def loop():
-            # start lemonbar if configured
-            if self.lemonbar_cmd:
-                try:
-                    self._proc = subprocess.Popen(self.lemonbar_cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                except Exception:
-                    logger.exception("Falha iniciando lemonbar")
-                    self._proc = None
-            while self._running:
-                try:
-                    line = self._build_status_line()
-                    if self._proc and self._proc.stdin:
-                        try:
-                            self._proc.stdin.write(line + "\n")
-                            self._proc.stdin.flush()
-                        except Exception:
-                            logger.exception("Falha escrevendo para lemonbar")
-                    else:
-                        # fallback: log the line (useful in debug)
-                        logger.info("status: %s", line)
-                except Exception:
-                    logger.exception("Erro no loop da statusbar")
-                time.sleep(self.interval)
-            # cleanup
-            if self._proc:
-                try:
-                    self._proc.stdin.close()
-                except Exception:
-                    pass
-                try:
-                    self._proc.terminate()
-                except Exception:
-                    pass
-
-        self._thread = threading.Thread(target=loop, daemon=True)
-        self._thread.start()
-
-    def stop(self):
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=1.0)
-        if self._proc:
+    # --------------------------
+    # Atualização
+    # --------------------------
+    def _update_loop(self):
+        while self.running:
             try:
-                self._proc.terminate()
+                self.cpu_usage = f"{psutil.cpu_percent()}%"
+                self.mem_usage = f"{psutil.virtual_memory().percent}%"
+                self.datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.battery = self._get_battery()
+                self.volume = self._get_volume()
+                self.redraw()
             except Exception:
                 pass
+            time.sleep(1)
 
-    # convenience widgets
-    def register_clock(self, name: str = "clock", fmt: str = "%Y-%m-%d %H:%M:%S"):
-        import datetime
-        def cb():
-            return datetime.datetime.now().strftime(fmt)
-        self.register_widget(name, cb)
+    def redraw(self):
+        self.win.clear_area()
+        segments = [
+            ("#444444", f"[WS {self.current_workspace}]"),
+            ("#666666", f"{self.active_window_title[:30]}"),
+            ("#444444", f"CPU {self.cpu_usage}"),
+            ("#444444", f"MEM {self.mem_usage}"),
+            ("#444444", f"VOL {self.volume}"),
+            ("#444444", f"BAT {self.battery}"),
+            ("#444444", self.datetime_str),
+        ]
+        x = 5
+        y = int(self.height * 0.75)
+        for color, text in segments:
+            self._draw_segment(x, y, text, fg=color)
+            x += len(text) * 8 + 10
+        self.dpy.flush()
 
-    def register_workspaces_widget(self, name: str = "workspaces"):
-        def cb():
-            try:
-                ws_mgr = getattr(self.wm, "workspaces", None)
-                if not ws_mgr:
-                    return ""
-                # show names with active markers per monitor 0
-                active = ws_mgr.get_active(0) if hasattr(ws_mgr, "get_active") else 0
-                names = [ws.name for ws in ws_mgr.workspaces]
-                parts = []
-                for i, n in enumerate(names):
-                    if i == active:
-                        parts.append(f"[{n}]")
-                    else:
-                        parts.append(n)
-                return " ".join(parts)
-            except Exception:
-                return ""
-        self.register_widget(name, cb)
+    def _draw_segment(self, x: int, y: int, text: str, fg: str):
+        gc = self.win.create_gc(
+            foreground=self._color_pixel(fg),
+            background=self._color_pixel(self.bg_color),
+            font=self._default_font()
+        )
+        self.win.draw_string(gc, x, y, text)
 
-    def register_layout_widget(self, name: str = "layout"):
-        def cb():
-            lm = getattr(self.wm, "layout_manager", None)
-            if not lm:
-                return ""
-            try:
-                if hasattr(lm, "current_name"):
-                    return str(lm.current_name())
-                if hasattr(lm, "current"):
-                    return str(lm.current)
-            except Exception:
-                return ""
-        self.register_widget(name, cb)
+    # --------------------------
+    # Infos extras
+    # --------------------------
+    def _get_battery(self) -> str:
+        try:
+            battery = psutil.sensors_battery()
+            if battery:
+                return f"{battery.percent}%{'+' if battery.power_plugged else ''}"
+            return "N/A"
+        except Exception:
+            return "N/A"
+
+    def _get_volume(self) -> str:
+        try:
+            out = subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode()
+            return out.split("/")[1].strip()
+        except Exception:
+            return "N/A"
+
+    # --------------------------
+    # Hooks externos
+    # --------------------------
+    def update_workspace(self, name: str):
+        self.current_workspace = name
+        self.redraw()
+
+    def update_active_window(self, title: str):
+        self.active_window_title = title
+        self.redraw()
+
+    # --------------------------
+    # Eventos
+    # --------------------------
+    def handle_button_press(self, ev):
+        """Permite clique na barra (ex.: trocar workspace)."""
+        if ev.detail == 1:  # botão esquerdo
+            # exemplo: clique → próximo workspace
+            self.wm.workspaces.next_workspace()
+
+    # --------------------------
+    # Limpeza
+    # --------------------------
+    def stop(self):
+        self.running = False
+        try:
+            self.win.destroy()
+        except Exception:
+            pass
+        self.dpy.flush()
