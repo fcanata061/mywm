@@ -1,134 +1,181 @@
 # managers/workspaces.py
-# Workspaces avançados MyWM 1.2+
-# Multi-monitor, layouts independentes, mover janelas, autostart
 
-from Xlib import X
-from core import layouts, ewmh
-import subprocess
-import time
+"""
+Workspace Manager:
+Gerencia múltiplos workspaces virtuais, alternância, janelas associadas,
+integração com EWMH e multimonitor.
+"""
+
+from typing import List, Dict, Optional, Any
+import logging
+from core import ewmh
+
+logger = logging.getLogger("mywm.workspaces")
+logger.addHandler(logging.NullHandler())
+
 
 class Workspace:
-    def __init__(self, name, layout=None):
+    def __init__(self, name: str, index: int, layout: Optional[str] = None):
         self.name = name
-        self.windows = []
-        self.layout_manager = layouts.LayoutManager()
-        if layout is not None:
-            self.layout_manager.set_layout(layout)
-        self.focus = None
+        self.index = index
+        self.layout = layout or "monocle"
+        self.windows: List[Any] = []
+        self.focus: Optional[Any] = None
 
-    # =======================
-    # JANELAS
-    # =======================
-    def add_window(self, win):
+    def add_window(self, win: Any):
         if win not in self.windows:
             self.windows.append(win)
-            self.layout_manager.add_window(win)
-            self.apply_layout()
-            self.set_focus(win)
+            logger.debug(f"[Workspace {self.name}] adicionou janela {getattr(win, 'id', win)}")
 
-    def remove_window(self, win):
+    def remove_window(self, win: Any):
         if win in self.windows:
             self.windows.remove(win)
-            self.layout_manager.remove_window(win)
-            self.apply_layout()
             if self.focus == win:
                 self.focus = self.windows[0] if self.windows else None
-                if self.focus:
-                    self.set_focus(self.focus)
+            logger.debug(f"[Workspace {self.name}] removeu janela {getattr(win, 'id', win)}")
 
-    def set_focus(self, win):
-        self.focus = win
-        ewmh.set_active_window(win)
-        if win:
-            win.set_input_focus(X.RevertToParent, X.CurrentTime)
+    def set_focus(self, win: Any):
+        if win in self.windows:
+            self.focus = win
+            logger.debug(f"[Workspace {self.name}] foco em {getattr(win, 'id', win)}")
 
-    def apply_layout(self, screen_geom=None):
-        geom = screen_geom or self.get_screen_geom()
-        self.layout_manager.apply(self.windows, geom)
+    def get_windows(self) -> List[Any]:
+        return self.windows
 
-    def next_layout(self):
-        self.layout_manager.next_layout()
-        self.apply_layout()
+    def __repr__(self):
+        return f"<Workspace {self.index}:{self.name} | {len(self.windows)} janelas>"
 
-    def prev_layout(self):
-        self.layout_manager.prev_layout()
-        self.apply_layout()
 
-    def get_screen_geom(self):
-        if self.windows:
-            return self.windows[0].get_geometry()
-        else:
-            # fallback
-            return type("Geom", (), {"x":0,"y":0,"width":800,"height":600})()
-
-class WorkspacesManager:
-    def __init__(self, wm, names=None):
+class WorkspaceManager:
+    def __init__(self, wm, names: Optional[List[str]] = None):
+        """
+        :param wm: instância principal do window manager
+        :param names: nomes iniciais dos workspaces
+        """
         self.wm = wm
-        self.workspaces = []
-        self.current_index = 0
-        self.autostart_apps = []
+        self.workspaces: Dict[int, Workspace] = {}
+        self.current_index: int = 0
+        self.last_index: int = 0
 
-        names = names or ["1","2","3","4","5","6","7","8","9"]
-        for n in names:
-            self.workspaces.append(Workspace(n))
+        if not names:
+            names = [f"ws-{i+1}" for i in range(9)]
 
-    # =======================
-    # WORKSPACE ATUAL
-    # =======================
-    def current(self):
-        return self.workspaces[self.current_index]
+        for i, name in enumerate(names):
+            self.workspaces[i] = Workspace(name, i)
 
-    def switch_to(self, index):
-        if index < 0 or index >= len(self.workspaces):
+        self._update_ewmh()
+
+    # =================================================
+    # Operações principais
+    # =================================================
+
+    def add_workspace(self, name: str):
+        idx = max(self.workspaces.keys(), default=-1) + 1
+        self.workspaces[idx] = Workspace(name, idx)
+        logger.info(f"Novo workspace criado: {name} (índice {idx})")
+        self._update_ewmh()
+
+    def remove_workspace(self, index: int):
+        if index not in self.workspaces:
             return
+        if len(self.workspaces) == 1:
+            logger.warning("Não é possível remover o último workspace")
+            return
+
+        ws = self.workspaces[index]
+        # mover janelas para workspace atual antes de remover
+        for win in ws.windows[:]:
+            self.move_window_to(win, self.current_index)
+        del self.workspaces[index]
+        logger.info(f"Workspace removido: {ws}")
+        self._update_ewmh()
+
+    def rename_workspace(self, index: int, new_name: str):
+        if index in self.workspaces:
+            self.workspaces[index].name = new_name
+            logger.info(f"Workspace {index} renomeado para {new_name}")
+            self._update_ewmh()
+
+    def list_workspaces(self) -> List[str]:
+        return [ws.name for ws in self.workspaces.values()]
+
+    def switch_to(self, index: int):
+        if index not in self.workspaces:
+            logger.warning(f"Tentativa de trocar para workspace inexistente {index}")
+            return
+
+        self.last_index = self.current_index
         self.current_index = index
-        ws = self.current()
-        ws.apply_layout()
+        ws = self.workspaces[index]
+
+        logger.info(f"Trocando para workspace {ws}")
+
+        # ocultar janelas de todos os outros
+        for i, w in self.workspaces.items():
+            if i != index:
+                for win in w.get_windows():
+                    try:
+                        win.unmap()
+                    except Exception:
+                        pass
+
+        # mapear as janelas do workspace ativo
+        for win in ws.get_windows():
+            try:
+                win.map()
+            except Exception:
+                pass
+
+        # focar a janela ativa se houver
         if ws.focus:
-            self.wm.set_focus(ws.focus)
+            self.wm.windows.set_focus(ws.focus)
 
-    def next_workspace(self):
-        self.switch_to((self.current_index + 1) % len(self.workspaces))
+        self._update_ewmh()
 
-    def prev_workspace(self):
-        self.switch_to((self.current_index - 1) % len(self.workspaces))
+    def switch_last(self):
+        self.switch_to(self.last_index)
 
-    # =======================
-    # MOVER JANELAS ENTRE WORKSPACES
-    # =======================
-    def move_window_to(self, win, target_index):
-        if target_index < 0 or target_index >= len(self.workspaces):
+    # =================================================
+    # Janelas e workspaces
+    # =================================================
+
+    def move_window_to(self, win: Any, index: int):
+        if index not in self.workspaces:
+            logger.warning(f"Tentativa de mover para workspace inexistente {index}")
             return
-        current_ws = self.find_workspace_of(win)
-        if current_ws:
-            current_ws.remove_window(win)
-        self.workspaces[target_index].add_window(win)
-        # Atualiza monitor/layout do WM
-        self.workspaces[target_index].apply_layout()
-        self.wm.set_focus(win)
+        src_ws = self.get_workspace_of(win)
+        if src_ws:
+            src_ws.remove_window(win)
+        self.workspaces[index].add_window(win)
 
-    def find_workspace_of(self, win):
-        for ws in self.workspaces:
+        if self.current_index == index:
+            try:
+                win.map()
+            except Exception:
+                pass
+        else:
+            try:
+                win.unmap()
+            except Exception:
+                pass
+
+        logger.info(f"Janela {getattr(win, 'id', win)} movida para {self.workspaces[index].name}")
+        self._update_ewmh()
+
+    def get_workspace_of(self, win: Any) -> Optional[Workspace]:
+        for ws in self.workspaces.values():
             if win in ws.windows:
                 return ws
         return None
 
-    # =======================
-    # AUTOSTART
-    # =======================
-    def set_autostart(self, apps):
-        self.autostart_apps = apps
+    # =================================================
+    # Integração com EWMH
+    # =================================================
 
-    def run_autostart(self, delay=0.1):
-        """
-        Executa apps em background com pequeno delay entre eles
-        """
-        for cmd in self.autostart_apps:
-            subprocess.Popen(cmd, shell=True)
-            time.sleep(delay)
-
-    # =======================
-    # LAYOUT ATUAL
-    # =======================
-    def apply_current_layout(self):
-        self.current().apply_layout()
+    def _update_ewmh(self):
+        try:
+            ewmh.set_number_of_desktops(len(self.workspaces))
+            ewmh.set_desktop_names([ws.name for ws in self.workspaces.values()])
+            ewmh.set_current_desktop(self.current_index)
+        except Exception:
+            logger.exception("Falha ao atualizar propriedades EWMH de workspaces")
