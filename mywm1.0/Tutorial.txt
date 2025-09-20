@@ -1,3 +1,106 @@
+---------------------------------
+📊 StatusBar – Módulos e Uso
+---------------------------------
+O MyWM inclui uma barra de status flutuante e configurável.
+Ela pode exibir informações do sistema e workspaces, além
+de interagir com cliques do mouse.
+
+A StatusBar é configurada no arquivo:
+    config/config.py → seção "statusbar"
+
+Exemplo de configuração:
+    "statusbar": {
+        "height": 24,
+        "bg": "#222222",
+        "fg": "#ffffff",
+        "font": "fixed",
+        "modules": ["workspaces", "window", "cpu", "mem", "net", "vol", "bat", "clock"],
+        "position": "top"   # ou "bottom"
+    }
+
+---------------------------------
+📦 Dependências para a StatusBar
+---------------------------------
+Obrigatórias:
+    psutil        → leitura de CPU, memória e disco
+    python-xlib   → integração X11 para exibir a barra
+
+Opcionais (para módulos extras):
+    alsaaudio     → controle de volume (ou pactl/amixer externo)
+    acpi          → monitorar bateria
+    cairocffi     → renderização avançada (gráficos, fontes customizadas)
+
+Instalar:
+    pip install psutil
+    sudo apt install acpi
+
+---------------------------------
+📋 Módulos Suportados
+---------------------------------
+1. workspaces
+   → Mostra a lista de workspaces e destaca o ativo.
+   → Clique do mouse muda o workspace.
+
+2. window
+   → Mostra o título da janela focada.
+
+3. cpu
+   → Mostra uso da CPU (%).
+   → Requer psutil.
+
+4. mem
+   → Mostra uso da memória RAM (%).
+   → Requer psutil.
+
+5. net
+   → Mostra status da rede (↑ download / ↓ upload).
+   → Pode usar psutil.net_io_counters() ou script externo.
+
+6. vol
+   → Mostra volume do sistema.
+   → Requer alsaaudio (Python) ou integração com pactl/amixer.
+
+7. bat
+   → Mostra nível da bateria (%).
+   → Requer acpi instalado no sistema.
+
+8. clock
+   → Mostra data/hora no formato configurado.
+
+---------------------------------
+⚙️ Personalização dos módulos
+---------------------------------
+- A ordem em "modules" define a ordem exibida.
+- Você pode remover qualquer módulo (ex.: usar só ["workspaces", "clock"]).
+- Pode adicionar scripts externos criando um módulo customizado
+  no arquivo managers/statusbar.py e adicionando ao config.
+
+---------------------------------
+🚀 Iniciando a StatusBar
+---------------------------------
+A barra inicia junto com o WM automaticamente.
+Não é necessário rodar comando separado.
+
+Se quiser reiniciar manualmente:
+    killall mwm && mwm
+
+---------------------------------
+🖌️ Aparência
+---------------------------------
+- A cor de fundo é configurada em "bg".
+- A cor do texto é configurada em "fg".
+- A fonte pode ser "fixed", "monospace", ou outra disponível no X11.
+- A altura é configurável em "height".
+
+---------------------------------
+📌 Dicas avançadas
+---------------------------------
+- Para ícones e fontes legais: instalar fonts-awesome e definir em "font".
+- Para statusbar transparente: usar compositor (picom).
+- Para barra externa (ex.: polybar), desabilite a interna removendo "statusbar".
+
+
+
 ==============================
 📖 Tutorial MyWM (mwm) – Atualizado
 ==============================
