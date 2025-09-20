@@ -1,104 +1,72 @@
-# config.py - configuração evoluída para MyWM
+# Configuração evoluída para MyWM
 
 config = {
-    # Terminal padrão
     "terminal": "alacritty",
 
-    # Decorações: bordas, gaps e cores
     "decorations": {
-        "border_width": 2,
-        "inner_gap": 5,
-        "outer_gap": 10,
-        "border_color_active": "#ff9900",
-        "border_color_inactive": "#444444"
+        "border_width": 3,
+        "inner_gap": 8,
+        "outer_gap": 12,
+        "border_color_active": "#ffb52a",
+        "border_color_inactive": "#333333",
     },
 
-    # Multi-monitor
     "multi_monitor": True,
 
-    # Workspaces configuração
     "workspaces": {
-        "names": ["1","2","web","code","misc"],
+        "names": ["1", "2", "web", "code", "chat"],
         "default_layout": "tile",
-        # layouts por workspace opcionais
         "layouts": {
-            "1": "monocle",
-            "web": "tile",
-            "code": "bsp"
+            "web": "monocle",
+            "code": "bsp",
         },
-        # comandos autostart por workspace
         "autostart": {
-            "web": ["firefox", "thunderbird"],
-            "code": ["code", "kitty"],
-            "misc": []
+            "web": ["firefox"],
+            "code": ["code", "kitty -e htop"],
         }
     },
 
-    # Keybindings
     "keybindings": [
-        {
-            "keysym": "Return",
-            "modifiers": ["Mod4"],
-            "action": "spawn_terminal"
-        },
-        {
-            "keysym": "q",
-            "modifiers": ["Mod4"],
-            "action": "close_window"
-        },
-        {
-            "keysym": "space",
-            "modifiers": ["Mod4"],
-            "action": "next_layout"
-        },
-        {
-            "keysym": "space",
-            "modifiers": ["Mod4","Shift"],
-            "action": "prev_layout"
-        },
-        {
-            "keysym": "s",
-            "modifiers": ["Mod4","Shift"],
-            "action": "toggle_scratchpad"
-        },
-        {
-            "keysym": "Tab",
-            "modifiers": ["Mod4"],
-            "action": "focus_next"
-        },
-        # etc...
+        {"keysym": "Return", "modifiers": ["Mod4"], "action": "spawn_terminal"},
+        {"keysym": "q", "modifiers": ["Mod4"], "action": "close_window"},
+        {"keysym": "space", "modifiers": ["Mod4"], "action": "next_layout"},
+        {"keysym": "Tab", "modifiers": ["Mod4"], "action": "focus_next"},
+        {"keysym": "s", "modifiers": ["Mod4", "Shift"], "action": "toggle_scratchpad", "args": "term"},
+        {"keysym": "Left", "modifiers": ["Mod4"], "action": "switch_prev_ws"},
+        {"keysym": "Right", "modifiers": ["Mod4"], "action": "switch_next_ws"},
     ],
 
-    # Scratchpad
     "scratchpads": {
         "term": {
-            "command": ["alacritty"],
+            "command": ["alacritty", "-t", "scratchpad"],
             "window_class": "Alacritty",
-            "geometry": {"width": 800, "height": 600},
-            "position": {"x": 100, "y": 100},
+            "geometry": {"width": 900, "height": 600},
+            "position": {"x": 200, "y": 150},
             "always_on_top": True,
-            "sticky": False
+            "sticky": True,
+        },
+        "music": {
+            "command": ["spotify"],
+            "window_class": "Spotify",
+            "geometry": {"width": 1000, "height": 700},
+            "always_center": True,
         }
     },
 
-    # Notificações e statusbar
     "notifications": {
         "lemonbar_cmd": "lemonbar -p -g 1920x24+0+0 -B '#222' -F '#fff'",
         "notify_app": "notify-send",
-        # níveis/customizações
         "levels": {
-            "info": {"urgency": "low", "timeout": 2000},
+            "info": {"urgency": "low", "timeout": 1500},
             "warning": {"urgency": "normal", "timeout": 4000},
             "error": {"urgency": "critical", "timeout": 6000},
         }
     },
 
-    # Floating padrão: janelas que devem abrir como flutuantes por padrão
     "floating_default": False,
 
-    # Persistência de estado
     "persist": {
         "workspaces_file": "~/.config/mywm/workspaces.json",
-        "scratchpads_state_file": "~/.config/mywm/scratchpads.json"
-    }
+        "scratchpads_state_file": "~/.config/mywm/scratchpads.json",
+    },
 }
