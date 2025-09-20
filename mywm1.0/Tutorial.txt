@@ -1,98 +1,159 @@
-=============================
-MyWM 1.0 - Tutorial Completo
-=============================
+MyWM (mwm) - Tutorial Completo
+==============================
 
-1. Estrutura de Diretórios
---------------------------
-~/.config/mwm/               # Configuração do usuário
-├── config.py                 # Configuração principal do MyWM
-├── autostart.sh              # Scripts de aplicativos que iniciam automaticamente
-├── themes/                   # Temas, cores e fontes
-└── managers/                 # Módulos do WM
-    ├── ewmh.py
-    ├── layouts.py
-    ├── scratchpad.py
-    ├── multimonitor.py
-    ├── decorations.py
-    ├── workspaces.py
-    ├── keybindings.py
-    └── notifications.py
-└── core/                     # Código central do WM
-    └── main.py               # Inicialização do WM
+📌 Sobre
+--------
+MyWM (apelidado de **mwm**) é um *tiling window manager* escrito em Python,
+leve, extensível e configurável. Ele utiliza **X11 (xcffib/cairocffi)** para gerenciar
+janelas e oferece suporte a múltiplos monitores, scratchpads, layouts dinâmicos,
+decorações customizadas e integração com notificações.
 
-2. Configuração (config.py)
-----------------------------
-- Terminal padrão
-- Bordas internas/externas, cores e gaps
-- Workspaces com layouts iniciais
-- Atalhos de teclado configuráveis
-- Lista de aplicativos de autostart
-- Comando lemonbar e integração com notificações
-- Ajustes adicionais: multi-monitor, scratchpad, floating padrão
+---------------------------
+📂 Estrutura de Diretórios
+---------------------------
+Repositório principal:
+mywm/
+├── mywm1.0/                 ← Código fonte principal do WM
+│   ├── __init__.py
+│   ├── main.py              ← Ponto de entrada principal
+│   ├── core/                ← Núcleo: layouts, EWMH, utilitários, config_loader
+│   ├── managers/            ← Gerenciadores: janelas, workspaces, keybindings, etc.
+│   └── config/              ← Arquivos de configuração (config.py)
+├── bin/
+│   └── mwm                  ← Binário launcher (opcional, em dev mode)
+├── pyproject.toml           ← Configuração pip/poetry (entrypoint, dependências)
+├── setup.cfg                ← Configuração setuptools
+└── README.md
 
-3. Inicialização do WM
-----------------------
-1. Garanta que o arquivo main.py tenha o shebang:
-   #!/usr/bin/env python3
-2. Torne-o executável:
-   chmod +x main.py
-3. Link para iniciar pelo nome 'mwm':
-   sudo ln -s /caminho/para/main.py /usr/local/bin/mwm
-4. Rodar o WM:
-   mwm
+---------------------------------
+⚙️ Dependências
+---------------------------------
+- Python >= 3.8
+- xcffib >= 0.12.1
+- cairocffi >= 1.6.1
+- pygobject >= 3.42.0
+- notify-send (para notificações, opcional)
+- Xephyr (para testes em janela, opcional)
 
-4. Funcionalidades Suportadas
------------------------------
-- Floating inteligente
-- Multi-monitor
-- Workspaces independentes (9 por default)
-- Scratchpad avançado (múltiplos scratchpads suportados)
-- Layouts completos:
-  - Monocle
-  - Tile
-  - Floating
-  - Fullscreen toggle
-- Bordas internas/externas e gaps configuráveis
-- Lemonbar integrado:
-  - Exibe workspace atual, layout, janelas abertas e foco
-- Notificações via notify-send
-- Atalhos de teclado configuráveis:
-  - Alt+Tab: alterna janelas
-  - Mod+Enter: abrir terminal
-  - Mod+Shift+Q: fechar janela
-  - Mod+Space / Mod+Shift+Space: alterna layouts
-  - Mod+Shift+S: toggle scratchpad
-  - Mod+R: recarrega configuração
-  - Mod+F: toggle fullscreen
-- Autostart de aplicativos
-- Configuração dinâmica via config.py sem reiniciar ou recompilar
+Instale dependências no Debian/Ubuntu:
+$ sudo apt install python3 python3-pip python3-gi python3-cffi \
+                   libxcursor-dev libxrandr-dev libxinerama-dev \
+                   libxi-dev libpangocairo-1.0-0 \
+                   libgirepository1.0-dev gir1.2-gtk-3.0 \
+                   xserver-xephyr notify-osd
 
-5. Integração
--------------
-- Configuração importada automaticamente do diretório:
-  ~/.config/mwm/config.py
-- Todos os módulos recebem a configuração:
-  - Keybindings
-  - Layouts
-  - Workspaces
-  - Scratchpads
-  - Decorations
-  - Notifications
-- Lemonbar e notificações atualizam automaticamente quando:
-  - Foco muda
-  - Janela adicionada/removida
-  - Layout alterado
+---------------------------------
+🚀 Instalação
+---------------------------------
+1. Clonar o repositório:
+   $ git clone https://github.com/seuuser/mywm.git
+   $ cd mywm
 
-6. Observações
----------------
-- Para adicionar novos scratchpads:
-  - Configure em config.py
-  - Adicione keybindings para alternar cada um
-- Para adicionar novos layouts:
-  - Edite layouts.py e configure layout inicial por workspace
-- Multi-monitor é suportado automaticamente, mas verifique as configurações no multimonitor.py
-- Recarregar configuração não exige reiniciar o WM
+2. Instalar via pip (usuário):
+   $ pip install --user .
 
------------------------------
-Fim do Tutorial - MyWM 1.0
------------------------------
+3. Instalar em modo desenvolvimento (para hackear o código):
+   $ pip install --user -e .
+
+Após a instalação, o binário **mwm** ficará disponível no seu PATH (geralmente em ~/.local/bin).
+
+---------------------------------
+▶️ Uso
+---------------------------------
+Executar diretamente:
+$ mwm
+
+Testar dentro de Xephyr:
+$ mwm --xephyr :1
+
+Passar config customizado:
+$ mwm --config ~/.config/mywm/config.py
+
+Ativar debug:
+$ mwm --debug
+
+Ver versão:
+$ mwm --version
+
+---------------------------------
+🛠️ Configuração
+---------------------------------
+O arquivo principal de configuração fica em:
+~/.config/mywm/config.py
+
+Exemplo mínimo:
+config = {
+    "terminal": "alacritty",
+    "workspaces": {
+        "names": ["1", "2", "web", "code"],
+        "default_layout": "tile"
+    },
+    "keybindings": [
+        {"keysym": "Return", "modifiers": ["Mod4"], "action": "spawn_terminal"},
+        {"keysym": "q", "modifiers": ["Mod4"], "action": "close_window"},
+    ],
+}
+
+---------------------------------
+📋 Funcionalidades Suportadas
+---------------------------------
+✔️ Layouts dinâmicos: tile, monocle, bsp (binário tree split)  
+✔️ Workspaces virtuais configuráveis  
+✔️ Scratchpads (janelas ocultas que podem ser mostradas/ocultadas por hotkeys)  
+✔️ Multi-monitor (Xinerama/Randr) com suporte a workspaces independentes  
+✔️ Decorações: bordas configuráveis, gaps internos e externos  
+✔️ Keybindings personalizáveis (atalhos configurados no config.py)  
+✔️ Integração com notificações (notify-send ou lemonbar)  
+✔️ Persistência: salvar estado de workspaces e scratchpads em JSON  
+✔️ Execução em Xephyr (teste do WM dentro de outro X server)  
+✔️ Compatibilidade EWMH/ICCCM básica (necessário para apps modernos)  
+
+---------------------------------
+⌨️ Comandos/Keybindings (exemplos)
+---------------------------------
+- Mod4 + Return → abre terminal
+- Mod4 + q → fecha janela ativa
+- Mod4 + Space → troca layout atual
+- Mod4 + Tab → foca próxima janela
+- Mod4 + Shift + s → alterna scratchpad "term"
+- Mod4 + Left → workspace anterior
+- Mod4 + Right → próximo workspace
+
+(Os atalhos podem ser editados em ~/.config/mywm/config.py)
+
+---------------------------------
+🧪 Desenvolvimento / Debug
+---------------------------------
+Rodar direto sem instalar:
+$ python3 mywm1.0/main.py
+
+Rodar binário local (sem pip):
+$ ./bin/mwm --debug
+
+Rodar no Xephyr para não derrubar sua sessão atual:
+$ Xephyr :1 -screen 1280x800 -ac -br -noreset &
+$ DISPLAY=:1 mwm
+
+---------------------------------
+🖥️ Execução no .xinitrc
+---------------------------------
+Para usar como seu WM principal, adicione ao ~/.xinitrc:
+
+exec mwm
+
+E inicie com:
+$ startx
+
+---------------------------------
+🔮 Roadmap / Extensões Futuras
+---------------------------------
+- Suporte Wayland (longo prazo)
+- Melhor suporte EWMH (NET_WM_STATE_FULLSCREEN, etc.)
+- Mais layouts (grid, spiral)
+- Statusbar integrada
+- Melhor integração com systemd user services
+
+---------------------------------
+📜 Licença
+---------------------------------
+MIT License - livre para uso, modificação e distribuição.
