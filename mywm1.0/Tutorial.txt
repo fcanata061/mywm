@@ -1,159 +1,123 @@
-MyWM (mwm) - Tutorial Completo
+==============================
+📖 Tutorial MyWM (mwm) – Atualizado
 ==============================
 
-📌 Sobre
---------
-MyWM (apelidado de **mwm**) é um *tiling window manager* escrito em Python,
-leve, extensível e configurável. Ele utiliza **X11 (xcffib/cairocffi)** para gerenciar
-janelas e oferece suporte a múltiplos monitores, scratchpads, layouts dinâmicos,
-decorações customizadas e integração com notificações.
-
----------------------------
-📂 Estrutura de Diretórios
----------------------------
-Repositório principal:
-mywm/
-├── mywm1.0/                 ← Código fonte principal do WM
-│   ├── __init__.py
-│   ├── main.py              ← Ponto de entrada principal
-│   ├── core/                ← Núcleo: layouts, EWMH, utilitários, config_loader
-│   ├── managers/            ← Gerenciadores: janelas, workspaces, keybindings, etc.
-│   └── config/              ← Arquivos de configuração (config.py)
-├── bin/
-│   └── mwm                  ← Binário launcher (opcional, em dev mode)
-├── pyproject.toml           ← Configuração pip/poetry (entrypoint, dependências)
-├── setup.cfg                ← Configuração setuptools
-└── README.md
+MyWM (mwm) é um window manager minimalista e extensível escrito em Python,
+com suporte a tiling, floating, EWMH, fullscreen, scratchpad, multi-monitor,
+notificações e statusbar avançada. Ele foi projetado para ser leve,
+hackável e personalizável.
 
 ---------------------------------
-⚙️ Dependências
+📂 Estrutura de diretórios
 ---------------------------------
-- Python >= 3.8
-- xcffib >= 0.12.1
-- cairocffi >= 1.6.1
-- pygobject >= 3.42.0
-- notify-send (para notificações, opcional)
-- Xephyr (para testes em janela, opcional)
-
-Instale dependências no Debian/Ubuntu:
-$ sudo apt install python3 python3-pip python3-gi python3-cffi \
-                   libxcursor-dev libxrandr-dev libxinerama-dev \
-                   libxi-dev libpangocairo-1.0-0 \
-                   libgirepository1.0-dev gir1.2-gtk-3.0 \
-                   xserver-xephyr notify-osd
+mywm1.0/
+│── config/
+│   └── config.py          # Configurações (keybindings, workspaces, cores, apps floating etc.)
+│── core/
+│   ├── ewmh.py            # Suporte EWMH/ICCCM completo
+│   ├── layouts.py         # Gerenciamento de layouts (tiling, monocle, grid…)
+│── managers/
+│   ├── decorations.py     # Bordas e decorações das janelas
+│   ├── floating.py        # Floating manager (mouse + teclado + snapping + fullscreen-aware)
+│   ├── keybindings.py     # Mapeamento de teclas e comandos
+│   ├── multimonitor.py    # Suporte multi-monitor (Xinerama/XRandR)
+│   ├── notificações.py    # Sistema de notificações
+│   ├── scratchpad.py      # Scratchpad (janelas ocultas/rápidas)
+│   ├── statusbar.py       # Statusbar robusta e interativa
+│   ├── window.py          # Abstração de janelas
+│   └── workspaces.py      # Workspaces virtuais
+│── main.py                # Loop principal do WM (integra todos os módulos)
+setup.py                   # Instalação via pip
 
 ---------------------------------
-🚀 Instalação
+📦 Dependências
+---------------------------------
+Obrigatórias:
+    pip install python-xlib psutil
+
+Opcionais:
+    cairocffi   → statusbar com gráficos, fontes avançadas
+    xcffib      → backend alternativo ao xlib (para futuro)
+
+---------------------------------
+🔧 Instalação
 ---------------------------------
 1. Clonar o repositório:
-   $ git clone https://github.com/seuuser/mywm.git
-   $ cd mywm
+    git clone https://github.com/fcanata061/mywm.git
+    cd mywm/mywm1.0
 
-2. Instalar via pip (usuário):
-   $ pip install --user .
+2. Instalar via pip:
+    pip install .
 
-3. Instalar em modo desenvolvimento (para hackear o código):
-   $ pip install --user -e .
-
-Após a instalação, o binário **mwm** ficará disponível no seu PATH (geralmente em ~/.local/bin).
+Isso cria o binário "mwm" no PATH.
 
 ---------------------------------
-▶️ Uso
+🚀 Uso
 ---------------------------------
-Executar diretamente:
-$ mwm
+Adicionar ao ~/.xinitrc:
+    exec mwm
 
-Testar dentro de Xephyr:
-$ mwm --xephyr :1
-
-Passar config customizado:
-$ mwm --config ~/.config/mywm/config.py
-
-Ativar debug:
-$ mwm --debug
-
-Ver versão:
-$ mwm --version
+Ou rodar manualmente em outra sessão X:
+    Xephyr :1 -screen 1280x720 &
+    DISPLAY=:1 mwm
 
 ---------------------------------
-🛠️ Configuração
+🎹 Keybindings (config/config.py)
 ---------------------------------
-O arquivo principal de configuração fica em:
-~/.config/mywm/config.py
-
-Exemplo mínimo:
-config = {
-    "terminal": "alacritty",
-    "workspaces": {
-        "names": ["1", "2", "web", "code"],
-        "default_layout": "tile"
-    },
-    "keybindings": [
-        {"keysym": "Return", "modifiers": ["Mod4"], "action": "spawn_terminal"},
-        {"keysym": "q", "modifiers": ["Mod4"], "action": "close_window"},
-    ],
-}
+Mod + Enter      → abrir terminal
+Mod + Q          → fechar janela
+Mod + J/K        → navegar entre janelas
+Mod + H/L        → redimensionar tiling
+Mod + F          → fullscreen
+Mod + Shift+Space→ alternar floating/tiling
+Mod + [1-9]      → trocar workspace
+Mod + Shift+[1-9]→ mover janela para workspace
+Mod + S          → toggle scratchpad
 
 ---------------------------------
-📋 Funcionalidades Suportadas
+🖼️ Recursos Suportados
 ---------------------------------
-✔️ Layouts dinâmicos: tile, monocle, bsp (binário tree split)  
-✔️ Workspaces virtuais configuráveis  
-✔️ Scratchpads (janelas ocultas que podem ser mostradas/ocultadas por hotkeys)  
-✔️ Multi-monitor (Xinerama/Randr) com suporte a workspaces independentes  
-✔️ Decorações: bordas configuráveis, gaps internos e externos  
-✔️ Keybindings personalizáveis (atalhos configurados no config.py)  
-✔️ Integração com notificações (notify-send ou lemonbar)  
-✔️ Persistência: salvar estado de workspaces e scratchpads em JSON  
-✔️ Execução em Xephyr (teste do WM dentro de outro X server)  
-✔️ Compatibilidade EWMH/ICCCM básica (necessário para apps modernos)  
+✓ Tiling Layouts: monocle, split, grid
+✓ Floating completo:
+    - mover/resize com mouse (Mod+clique)
+    - snapping em bordas/cantos
+    - always-on-top
+    - restaurar posição ao sair do fullscreen
+✓ Fullscreen real (oculta statusbar, respeita EWMH)
+✓ Statusbar com workspaces, janela focada, hora, CPU/RAM, cliques
+✓ Workspaces virtuais dinâmicos
+✓ Scratchpad
+✓ Notificações integradas
+✓ Multi-monitor (Xinerama/XRandR)
+✓ EWMH/ICCCM completo:
+    _NET_WM_STATE, _NET_ACTIVE_WINDOW,
+    _NET_WM_DESKTOP, _NET_SUPPORTED,
+    _NET_CURRENT_DESKTOP, etc.
 
 ---------------------------------
-⌨️ Comandos/Keybindings (exemplos)
+🛠️ Customização
 ---------------------------------
-- Mod4 + Return → abre terminal
-- Mod4 + q → fecha janela ativa
-- Mod4 + Space → troca layout atual
-- Mod4 + Tab → foca próxima janela
-- Mod4 + Shift + s → alterna scratchpad "term"
-- Mod4 + Left → workspace anterior
-- Mod4 + Right → próximo workspace
-
-(Os atalhos podem ser editados em ~/.config/mywm/config.py)
+Edite config/config.py para:
+- Keybindings
+- Cores da statusbar
+- Workspaces
+- Aplicativos floating
+- Layout padrão
 
 ---------------------------------
-🧪 Desenvolvimento / Debug
+🧑‍💻 Desenvolvimento
 ---------------------------------
-Rodar direto sem instalar:
-$ python3 mywm1.0/main.py
-
-Rodar binário local (sem pip):
-$ ./bin/mwm --debug
-
-Rodar no Xephyr para não derrubar sua sessão atual:
-$ Xephyr :1 -screen 1280x800 -ac -br -noreset &
-$ DISPLAY=:1 mwm
+Rodar em modo debug:
+    mwm --debug
 
 ---------------------------------
-🖥️ Execução no .xinitrc
+🚧 Limitações atuais
 ---------------------------------
-Para usar como seu WM principal, adicione ao ~/.xinitrc:
-
-exec mwm
-
-E inicie com:
-$ startx
-
----------------------------------
-🔮 Roadmap / Extensões Futuras
----------------------------------
-- Suporte Wayland (longo prazo)
-- Melhor suporte EWMH (NET_WM_STATE_FULLSCREEN, etc.)
-- Mais layouts (grid, spiral)
-- Statusbar integrada
-- Melhor integração com systemd user services
+- Apenas X11 (Wayland não suportado)
+- Statusbar simples comparada a Polybar
+- Não tem compositor (recomenda-se usar picom)
 
 ---------------------------------
 📜 Licença
 ---------------------------------
-MIT License - livre para uso, modificação e distribuição.
+MIT License
