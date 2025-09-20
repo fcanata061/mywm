@@ -494,6 +494,9 @@ def main():
 
     LOG.info("MyWM finalizado.")
 
+def main():
+    wm = WindowManager()
+    wm.run()
 
 if __name__ == "__main__":
     main()
