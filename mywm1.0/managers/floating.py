@@ -1,14 +1,18 @@
-# managers/floating.py
+# mywm1.0/managers/floating.py
 """
-FloatingManager: gerenciamento avançado de janelas flutuantes.
-Integra com decorations e window_manager do WM principal.
+FloatingManager
+- Persistência de posições
+- Snap to edges
+- Move/resize por teclado
+- Raise / lower
+- Animação opcional (simples)
 """
 
 import logging
 import time
 import json
 import os
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from Xlib import X
 
@@ -17,26 +21,28 @@ logger.addHandler(logging.NullHandler())
 
 DEFAULT_STATE_FILE = os.path.expanduser("~/.config/mywm/floating.json")
 
+
 class FloatingManager:
     def __init__(self, wm, state_file: str = DEFAULT_STATE_FILE, snap_threshold: int = 16, animation: bool = False):
         self.wm = wm
-        self.dpy = wm.dpy
+        self.dpy = getattr(wm, "dpy")
+        self.root = getattr(wm, "root")
         self.snap_threshold = snap_threshold
         self.animation = animation
         self.state_file = os.path.expanduser(state_file)
-        self.positions: Dict[str, Dict] = {}  # windowid -> geometry dict
+        self.positions: Dict[str, Dict] = {}
         self._load_state()
 
-    # -----------------
-    # Persistence
-    # -----------------
+    # persistence
     def _load_state(self):
         try:
             if os.path.exists(self.state_file):
                 with open(self.state_file, "r", encoding="utf-8") as f:
-                    self.positions = json.load(f)
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.positions = data
         except Exception:
-            logger.exception("Falha carregando estado do floating")
+            logger.exception("Falha ao carregar estado do floating")
 
     def _save_state(self):
         try:
@@ -44,144 +50,131 @@ class FloatingManager:
             with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(self.positions, f, indent=2)
         except Exception:
-            logger.exception("Falha salvando estado do floating")
+            logger.exception("Falha ao salvar estado do floating")
 
-    # -----------------
-    # Helpers
-    # -----------------
-    def _id(self, win: Any) -> str:
+    def _wid(self, win: Any) -> str:
         return str(getattr(win, "id", win))
 
-    def set_position(self, win: Any, x:int, y:int, width:Optional[int]=None, height:Optional[int]=None, save: bool = True):
-        wid = self._id(win)
+    # set / restore
+    def set_position(self, win: Any, x: int, y: int, width: Optional[int] = None, height: Optional[int] = None, save: bool = True):
+        wid = self._wid(win)
         geom = {"x": int(x), "y": int(y)}
         if width is not None:
             geom["width"] = int(width)
         if height is not None:
             geom["height"] = int(height)
         self.positions[wid] = geom
-        # configure on X
-        args = {}
-        if "x" in geom: args["x"] = geom["x"]
-        if "y" in geom: args["y"] = geom["y"]
-        if "width" in geom: args["width"] = geom["width"]
-        if "height" in geom: args["height"] = geom["height"]
-        try:
-            if self.animation:
-                self._animate_move(win, args)
-            else:
-                win.configure(**args)
-                self.dpy.flush()
-        except Exception:
-            logger.exception("Falha configurando posição do floating %s", wid)
+        self._apply_configure(win, geom)
         if save:
             self._save_state()
 
     def restore_position(self, win: Any):
-        wid = self._id(win)
-        if wid in self.positions:
-            p = self.positions[wid]
-            try:
-                win.configure(x=p["x"], y=p["y"], width=p.get("width"), height=p.get("height"))
-                self.dpy.flush()
-            except Exception:
-                logger.exception("Falha restaurando posição de %s", wid)
+        wid = self._wid(win)
+        p = self.positions.get(wid)
+        if not p:
+            return
+        try:
+            args = {}
+            if "x" in p: args["x"] = int(p["x"])
+            if "y" in p: args["y"] = int(p["y"])
+            if "width" in p: args["width"] = int(p["width"])
+            if "height" in p: args["height"] = int(p["height"])
+            self._apply_configure(win, args)
+        except Exception:
+            logger.exception("restore_position falhou para %s", wid)
 
-    # -----------------
-    # Snapping
-    # -----------------
-    def snap_to_edges(self, win: Any, x:int, y:int, w:int, h:int, screen_geom=None) -> Tuple[int,int]:
-        """
-        Snap simples: se perto de borda (snap_threshold), prende a x/y à borda.
-        screen_geom: objeto que tem x,y,width,height (pode ser monitor)
-        """
+    def _apply_configure(self, win: Any, args: Dict):
+        try:
+            if self.animation:
+                self._animate(win, args)
+            else:
+                win.configure(**args)
+                if self.dpy:
+                    self.dpy.flush()
+        except Exception:
+            logger.exception("Falha ao aplicar configure em floating")
+
+    # snap
+    def snap_to_edges(self, x: int, y: int, w: int, h: int, screen_geom=None) -> Tuple[int, int]:
         th = self.snap_threshold
-        sx, sy, sw, sh = 0, 0, 0, 0
         if screen_geom:
             sx, sy, sw, sh = screen_geom.x, screen_geom.y, screen_geom.width, screen_geom.height
         else:
-            # fallback para root geometry
             try:
-                rootgeom = self.wm.root.get_geometry()
-                sx, sy, sw, sh = rootgeom.x, rootgeom.y, rootgeom.width, rootgeom.height
+                rg = self.root.get_geometry()
+                sx, sy, sw, sh = rg.x, rg.y, rg.width, rg.height
             except Exception:
                 sx, sy, sw, sh = 0, 0, 0, 0
-        newx, newy = x, y
-        # left
+        nx, ny = x, y
         if abs(x - sx) <= th:
-            newx = sx
-        # top
+            nx = sx
         if abs(y - sy) <= th:
-            newy = sy
-        # right
+            ny = sy
         if sw and abs((x + w) - (sx + sw)) <= th:
-            newx = sx + sw - w
-        # bottom
+            nx = sx + sw - w
         if sh and abs((y + h) - (sy + sh)) <= th:
-            newy = sy + sh - h
-        return newx, newy
+            ny = sy + sh - h
+        return nx, ny
 
-    # -----------------
-    # Keyboard move/resize
-    # -----------------
-    def move_by(self, win: Any, dx:int, dy:int, snap:bool=True, save:bool=True):
+    # keyboard move / resize
+    def move_by(self, win: Any, dx: int, dy: int, snap: bool = True, save: bool = True, screen_geom=None):
         try:
-            geom = win.get_geometry()
-            newx = geom.x + dx
-            newy = geom.y + dy
-            w = geom.width; h = geom.height
+            g = win.get_geometry()
+            newx = g.x + dx
+            newy = g.y + dy
+            nw, nh = g.width, g.height
             if snap:
-                newx, newy = self.snap_to_edges(win, newx, newy, w, h)
-            self.set_position(win, newx, newy, width=w, height=h, save=save)
+                newx, newy = self.snap_to_edges(newx, newy, nw, nh, screen_geom)
+            self.set_position(win, newx, newy, nw, nh, save=save)
         except Exception:
             logger.exception("move_by falhou")
 
-    def resize_by(self, win: Any, dw:int, dh:int, save:bool=True):
+    def resize_by(self, win: Any, dw: int, dh: int, save: bool = True):
         try:
-            geom = win.get_geometry()
-            neww = max(50, geom.width + dw)
-            newh = max(50, geom.height + dh)
-            self.set_position(win, geom.x, geom.y, width=neww, height=newh, save=save)
+            g = win.get_geometry()
+            neww = max(50, g.width + dw)
+            newh = max(50, g.height + dh)
+            self.set_position(win, g.x, g.y, neww, newh, save=save)
         except Exception:
             logger.exception("resize_by falhou")
 
-    # -----------------
-    # Stacking
-    # -----------------
+    # raise/lower
     def raise_window(self, win: Any):
         try:
             win.configure(stack_mode=X.Above)
-            self.dpy.flush()
+            if self.dpy:
+                self.dpy.flush()
         except Exception:
             logger.exception("raise_window falhou")
 
     def lower_window(self, win: Any):
         try:
             win.configure(stack_mode=X.Below)
-            self.dpy.flush()
+            if self.dpy:
+                self.dpy.flush()
         except Exception:
             logger.exception("lower_window falhou")
 
-    # -----------------
-    # Simple animation (linear, few steps)
-    # -----------------
-    def _animate_move(self, win: Any, target_args: Dict):
+    # animation (simple linear)
+    def _animate(self, win: Any, target: Dict, steps: int = 6, delay: float = 0.01):
         try:
-            # read current geometry
-            g = win.get_geometry()
-            sx, sy, sw, sh = g.x, g.y, g.width, g.height
-            tx = target_args.get("x", sx)
-            ty = target_args.get("y", sy)
-            tw = target_args.get("width", sw)
-            th = target_args.get("height", sh)
-            steps = 6
-            for i in range(1, steps+1):
+            geom = win.get_geometry()
+            sx, sy, sw, sh = geom.x, geom.y, geom.width, geom.height
+            tx = target.get("x", sx)
+            ty = target.get("y", sy)
+            tw = target.get("width", sw)
+            th = target.get("height", sh)
+            for i in range(1, steps + 1):
                 nx = int(sx + (tx - sx) * i / steps)
                 ny = int(sy + (ty - sy) * i / steps)
                 nw = int(sw + (tw - sw) * i / steps)
                 nh = int(sh + (th - sh) * i / steps)
-                win.configure(x=nx, y=ny, width=nw, height=nh)
-                self.dpy.flush()
-                time.sleep(0.01)
+                try:
+                    win.configure(x=nx, y=ny, width=nw, height=nh)
+                    if self.dpy:
+                        self.dpy.flush()
+                except Exception:
+                    pass
+                time.sleep(delay)
         except Exception:
-            logger.exception("animate_move falhou")
+            logger.exception("animate falhou")
