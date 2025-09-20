@@ -1,67 +1,104 @@
-# config.py
-# Configuração completa do MyWM 1.0+
+# config.py - configuração evoluída para MyWM
 
 config = {
-    # =======================
     # Terminal padrão
-    # =======================
-    "terminal": "xterm",
+    "terminal": "alacritty",
 
-    # =======================
-    # Decorações: bordas e gaps
-    # =======================
+    # Decorações: bordas, gaps e cores
     "decorations": {
         "border_width": 2,
         "inner_gap": 5,
         "outer_gap": 10,
-        "border_color_active": "#ff0000",
-        "border_color_inactive": "#555555"
+        "border_color_active": "#ff9900",
+        "border_color_inactive": "#444444"
     },
 
-    # =======================
-    # Workspaces
-    # =======================
+    # Multi-monitor
+    "multi_monitor": True,
+
+    # Workspaces configuração
     "workspaces": {
-        "names": ["1","2","3","4","5","6","7","8","9"],
-        # Layout inicial por workspace (opcional)
-        "layouts": ["monocle","tile","tile","monocle","tile","tile","monocle","tile","tile"]
+        "names": ["1","2","web","code","misc"],
+        "default_layout": "tile",
+        # layouts por workspace opcionais
+        "layouts": {
+            "1": "monocle",
+            "web": "tile",
+            "code": "bsp"
+        },
+        # comandos autostart por workspace
+        "autostart": {
+            "web": ["firefox", "thunderbird"],
+            "code": ["code", "kitty"],
+            "misc": []
+        }
     },
 
-    # =======================
     # Keybindings
-    # =======================
-    "keybindings": {
-        "alt_tab": "Alt_L+Tab",            # Circular janelas
-        "mod_enter": "Mod4+Return",        # Abrir terminal
-        "mod_shift_q": "Mod4+Shift_Q",     # Fechar janela
-        "mod_space": "Mod4+space",         # Próximo layout
-        "mod_shift_space": "Mod4+Shift_space", # Layout anterior
-        "mod_shift_s": "Mod4+Shift_S",     # Toggle scratchpad
-        "mod_r": "Mod4+r"                  # Recarregar configuração
-    },
-
-    # =======================
-    # Autostart
-    # =======================
-    "autostart": [
-        "nm-applet",
-        "pasystray",
-        "picom --experimental-backends",
-        "xsetroot -cursor_name left_ptr"
+    "keybindings": [
+        {
+            "keysym": "Return",
+            "modifiers": ["Mod4"],
+            "action": "spawn_terminal"
+        },
+        {
+            "keysym": "q",
+            "modifiers": ["Mod4"],
+            "action": "close_window"
+        },
+        {
+            "keysym": "space",
+            "modifiers": ["Mod4"],
+            "action": "next_layout"
+        },
+        {
+            "keysym": "space",
+            "modifiers": ["Mod4","Shift"],
+            "action": "prev_layout"
+        },
+        {
+            "keysym": "s",
+            "modifiers": ["Mod4","Shift"],
+            "action": "toggle_scratchpad"
+        },
+        {
+            "keysym": "Tab",
+            "modifiers": ["Mod4"],
+            "action": "focus_next"
+        },
+        # etc...
     ],
 
-    # =======================
-    # Lemonbar e notificações
-    # =======================
-    "notifications": {
-        "lemonbar_cmd": "lemonbar -p -g 1920x24+0+0 -B '#222' -F '#fff'",
-        "notify_app": "notify-send"
+    # Scratchpad
+    "scratchpads": {
+        "term": {
+            "command": ["alacritty"],
+            "window_class": "Alacritty",
+            "geometry": {"width": 800, "height": 600},
+            "position": {"x": 100, "y": 100},
+            "always_on_top": True,
+            "sticky": False
+        }
     },
 
-    # =======================
-    # Outros ajustes
-    # =======================
-    "multi_monitor": True,       # Suporte a múltiplos monitores
-    "scratchpad_geometry": "800x600+100+100", # Posição inicial do scratchpad
-    "floating_default": False    # Janelas padrão como floating ou tile
+    # Notificações e statusbar
+    "notifications": {
+        "lemonbar_cmd": "lemonbar -p -g 1920x24+0+0 -B '#222' -F '#fff'",
+        "notify_app": "notify-send",
+        # níveis/customizações
+        "levels": {
+            "info": {"urgency": "low", "timeout": 2000},
+            "warning": {"urgency": "normal", "timeout": 4000},
+            "error": {"urgency": "critical", "timeout": 6000},
+        }
+    },
+
+    # Floating padrão: janelas que devem abrir como flutuantes por padrão
+    "floating_default": False,
+
+    # Persistência de estado
+    "persist": {
+        "workspaces_file": "~/.config/mywm/workspaces.json",
+        "scratchpads_state_file": "~/.config/mywm/scratchpads.json"
+    }
 }
